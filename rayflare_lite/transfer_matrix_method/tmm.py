@@ -4,7 +4,7 @@
 # Journal of Open Source Software, 6(65), 3460. https://doi.org/10.21105/joss.03460
 
 import numpy as np
-import xarray as xr
+import rayflare_lite.xarray as xr
 from rayflare_lite.sparse import COO, save_npz, stack
 import time
 from joblib import Parallel, delayed

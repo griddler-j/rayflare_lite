@@ -15,7 +15,7 @@ from cmath import sin, cos, sqrt, acos, atan
 from math import atan2
 from random import random
 from itertools import product
-import xarray as xr
+import rayflare_lite.xarray as xr
 from rayflare_lite.sparse import COO, save_npz, stack
 from joblib import Parallel, delayed
 from copy import deepcopy
@@ -118,7 +118,8 @@ def RT(
 
         if lookuptable is None:
             if Fr_or_TMM == 1:
-                lookuptable = xr.open_dataset(os.path.join(structpath, surf_name + ".nc"))
+                assert(1==0)
+                # lookuptable = xr.open_dataset(os.path.join(structpath, surf_name + ".nc"))
             else:
                 lookuptable = None
         # if lookuptable is not None:
@@ -1335,15 +1336,15 @@ def make_tmm_args(arg_list):
     for i1, val in enumerate(arg_list[1]):
 
         if val == 1:
-
-            structpath = arg_list[2]
-            surf_name = arg_list[3][i1] + "int_{}".format(i1)
-            lookuptable = xr.open_dataset(os.path.join(structpath, surf_name + ".nc")).loc[dict(wl=arg_list[-1]*1e9)].load()
-            additional_tmm_args.append(
-                {"Fr_or_TMM": 1, "lookuptable": lookuptable}
-            )
-            prof_layers.append(arg_list[5][i1])
-            interface_layer_widths.append(arg_list[6][i1])
+            assert(1==0)
+            # structpath = arg_list[2]
+            # surf_name = arg_list[3][i1] + "int_{}".format(i1)
+            # lookuptable = xr.open_dataset(os.path.join(structpath, surf_name + ".nc")).loc[dict(wl=arg_list[-1]*1e9)].load()
+            # additional_tmm_args.append(
+            #     {"Fr_or_TMM": 1, "lookuptable": lookuptable}
+            # )
+            # prof_layers.append(arg_list[5][i1])
+            # interface_layer_widths.append(arg_list[6][i1])
 
         else:
             additional_tmm_args.append({})

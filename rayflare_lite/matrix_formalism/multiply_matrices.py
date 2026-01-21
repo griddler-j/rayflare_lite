@@ -7,7 +7,7 @@ import numpy as np
 from rayflare_lite.sparse import load_npz, dot, COO, stack, einsum
 from rayflare_lite.angles import make_angle_vector, fold_phi, overall_bin
 import os
-import xarray as xr
+import rayflare_lite.xarray as xr
 from rayflare_lite.state import State
 import time
 import matplotlib.pyplot as plt

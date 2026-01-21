@@ -6,8 +6,6 @@
 import numpy as np
 from rayflare_lite.interpolate import interp1d
 import os
-from rayflare_lite.sparse import load_npz
-import xarray as xr
 
 from rayflare_lite import logger
 
@@ -270,22 +268,23 @@ def get_matrices_or_paths(
         )
 
     if os.path.isfile(savepath_RT) and os.path.isfile(savepath_A) and not overwrite:
-        logger.info("Existing angular redistribution matrices found")
-        existing = True
-        full_mat = load_npz(savepath_RT)
-        A_mat = load_npz(savepath_A)
+        assert(1==0)
+        # logger.info("Existing angular redistribution matrices found")
+        # existing = True
+        # full_mat = load_npz(savepath_RT)
+        # A_mat = load_npz(savepath_A)
 
-        if prof_layers is not None:
-            if os.path.isfile(prof_mat_path):
-                prof_dataset = xr.load_dataset(prof_mat_path)
-                return [existing, [full_mat, A_mat, prof_dataset]]
-            else:
-                logger.info("Recalculating with absorption profile information")
-                existing = False
-                return [existing, [savepath_RT, savepath_A, prof_mat_path]]
+        # if prof_layers is not None:
+        #     if os.path.isfile(prof_mat_path):
+        #         prof_dataset = xr.load_dataset(prof_mat_path)
+        #         return [existing, [full_mat, A_mat, prof_dataset]]
+        #     else:
+        #         logger.info("Recalculating with absorption profile information")
+        #         existing = False
+        #         return [existing, [savepath_RT, savepath_A, prof_mat_path]]
 
-        else:
-            return [existing, [full_mat, A_mat]]
+        # else:
+        #     return [existing, [full_mat, A_mat]]
 
     else:
         if prof_layers is not None:

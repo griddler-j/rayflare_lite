@@ -3,7 +3,7 @@
 # Pearce, P. M. (2021). RayFlare: flexible optical modelling of solar cells.
 # Journal of Open Source Software, 6(65), 3460. https://doi.org/10.21105/joss.03460
 
-import xarray as xr
+import rayflare_lite.xarray as xr
 import numpy as np
 from rayflare_lite.transfer_matrix_method.tmm import tmm_structure
 from rayflare_lite.utilities import get_wavelength
@@ -58,8 +58,9 @@ def make_TMM_lookuptable(
 
     savepath = os.path.join(structpath, surf_name + ".nc")
     if os.path.isfile(savepath) and not overwrite:
-        logging.info("Existing lookup table found")
-        allres = xr.open_dataset(savepath)
+        assert(1==0)
+        # logging.info("Existing lookup table found")
+        # allres = xr.open_dataset(savepath)
     else:
         get_wavelength(options)
         wavelengths = options["wavelength"]

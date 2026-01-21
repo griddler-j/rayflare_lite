@@ -1,5 +1,5 @@
 import numpy as np
-import xarray as xr
+import rayflare_lite.xarray as xr
 import os
 from rayflare_lite.utilities import get_savepath
 from rayflare_lite.angles import fold_phi, make_angle_vector, overall_bin
@@ -959,18 +959,19 @@ def lambertian_scattering(strt, save_location, options):
         unique_angles_rear, inverse_indices_rear = np.unique(theta_local_rear, return_inverse=True)
 
         if n_front_layers > 0:
-            lookuptable_front = xr.open_dataset(os.path.join(structpath, front_inside.name + f"int_{mat_index - 1}.nc"))
+            assert(1==0)
+            # lookuptable_front = xr.open_dataset(os.path.join(structpath, front_inside.name + f"int_{mat_index - 1}.nc"))
 
-            data_front = lookuptable_front.loc[dict(side=-1, pol=options.pol)].sel(
-                angle=abs(unique_angles_front), wl=options.wavelength * 1e9, method="nearest"
-            ).load()
-            R_front = np.real(data_front["R"].data).T
-            A_per_layer_front = np.real(data_front["Alayer"].data).T
-            A_all_front = A_per_layer_front[:, inverse_indices_front].reshape(
-                (n_front_layers,) + theta_local_front.shape + (len(options.wavelength),))
+            # data_front = lookuptable_front.loc[dict(side=-1, pol=options.pol)].sel(
+            #     angle=abs(unique_angles_front), wl=options.wavelength * 1e9, method="nearest"
+            # ).load()
+            # R_front = np.real(data_front["R"].data).T
+            # A_per_layer_front = np.real(data_front["Alayer"].data).T
+            # A_all_front = A_per_layer_front[:, inverse_indices_front].reshape(
+            #     (n_front_layers,) + theta_local_front.shape + (len(options.wavelength),))
 
-            A_reshape_front = A_all_front.reshape(
-                (n_front_layers, n_triangles_front, len(phi), len(theta_lamb), len(options.wavelength)))
+            # A_reshape_front = A_all_front.reshape(
+            #     (n_front_layers, n_triangles_front, len(phi), len(theta_lamb), len(options.wavelength)))
 
 
         else:
@@ -984,17 +985,18 @@ def lambertian_scattering(strt, save_location, options):
             theta_local_front.shape + (len(options.wavelength),))
 
         if n_rear_layers > 0:
-            lookuptable_rear = xr.open_dataset(os.path.join(structpath, rear_inside.name + f"int_{mat_index}.nc"))
-            data_rear = lookuptable_rear.loc[dict(side=1, pol=options.pol)].sel(
-                angle=abs(unique_angles_rear), wl=options.wavelength * 1e9, method="nearest"
-            )
-            R_rear = np.real(data_rear["R"].data).T
-            A_per_layer_rear = np.real(data_rear["Alayer"].data).T
-            A_all_rear = A_per_layer_rear[:, inverse_indices_rear].reshape(
-                (n_rear_layers,) + theta_local_rear.shape + (len(options.wavelength),))
+            assert(1==0)
+            # lookuptable_rear = xr.open_dataset(os.path.join(structpath, rear_inside.name + f"int_{mat_index}.nc"))
+            # data_rear = lookuptable_rear.loc[dict(side=1, pol=options.pol)].sel(
+            #     angle=abs(unique_angles_rear), wl=options.wavelength * 1e9, method="nearest"
+            # )
+            # R_rear = np.real(data_rear["R"].data).T
+            # A_per_layer_rear = np.real(data_rear["Alayer"].data).T
+            # A_all_rear = A_per_layer_rear[:, inverse_indices_rear].reshape(
+            #     (n_rear_layers,) + theta_local_rear.shape + (len(options.wavelength),))
 
-            A_reshape_rear = A_all_rear.reshape(
-                (n_rear_layers, n_triangles_rear, len(phi), len(theta_lamb), len(options.wavelength)))
+            # A_reshape_rear = A_all_rear.reshape(
+            #     (n_rear_layers, n_triangles_rear, len(phi), len(theta_lamb), len(options.wavelength)))
 
 
         else:
