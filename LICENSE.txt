@@ -1,0 +1,31 @@
+This is a forked subset of the RayFlare project. It may include modifications and is
+maintained independently from the upstream project.
+
+The sourcecode of this fork is freely available at https://github.com/griddler-j/PV_circuit_model
+
+Below is the original LICENSE.txt content of the upstream project
+
+------------------------------------------------------------------------------
+
+RayFlare is a programme for flexible modelling of complicated optical structures.
+
+Copyright (C) 2021-2024 Phoebe Pearce
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+The full license text can be found in GNU_LGPL_v3.txt
+
+Contact: p.pearce@unsw.edu.au or p.m.pearce@gmail.com
+
+
