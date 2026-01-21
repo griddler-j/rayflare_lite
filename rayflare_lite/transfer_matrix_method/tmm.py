@@ -5,7 +5,7 @@
 
 import numpy as np
 import xarray as xr
-from sparse import COO, save_npz, stack
+from rayflare_lite.sparse import COO, save_npz, stack
 import time
 from joblib import Parallel, delayed
 import pickle

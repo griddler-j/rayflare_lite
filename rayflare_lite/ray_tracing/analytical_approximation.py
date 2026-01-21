@@ -3,7 +3,7 @@ import xarray as xr
 import os
 from rayflare_lite.utilities import get_savepath
 from rayflare_lite.angles import fold_phi, make_angle_vector, overall_bin
-from sparse import COO, save_npz, stack
+from rayflare_lite.sparse import COO, save_npz, stack
 import warnings
 
 # Suppress all runtime warnings

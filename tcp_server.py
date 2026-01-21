@@ -16,6 +16,10 @@ from rayflare_lite.structure import Interface, BulkLayer, Structure, Roughness, 
 from rayflare_lite.matrix_formalism import calculate_RAT, process_structure
 from rayflare_lite.options import default_options
 
+from PV_Circuit_Model.data_fitting_tandem_cell import (
+    get_measurements, analyze_solar_cell_measurements
+)
+
 SC = None
 output_file = None
 SHOULD_EXIT = False
@@ -82,10 +86,6 @@ def _sigint(_sig, _frm):
 signal.signal(signal.SIGINT, _sigint)
 
 def analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_out, variables):
-    # Lazy import so the TCP server can start even if PV_Circuit_Model isn't installed.
-    from PV_Circuit_Model.data_fitting_tandem_cell import (
-        get_measurements, analyze_solar_cell_measurements
-    )
     measurements = get_measurements(measurements_folder)
     cell_model, _ = analyze_solar_cell_measurements(
         measurements,
@@ -113,23 +113,23 @@ def analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_
     f_out.write(output)
     f_out.flush()
 
-def generate_differentials_wrapper(measurements, cell_model, f_out):
-    from PV_Circuit_Model.data_fitting_tandem_cell import generate_differentials
-    M, Y, fit_parameters, aux = generate_differentials(measurements, cell_model)
-    f_out.write(f"OUTPUT:{json.dumps(M.tolist())}\n")
-    f_out.write(f"OUTPUT:{json.dumps(Y.tolist())}\n")
-    fit_parameter_aspects = [
-        "limit_order_of_mag", "this_min", "this_max", "abs_min", "abs_max",
-        "min", "max", "value", "nominal_value", "d_value", "is_log"
-    ]
-    for aspect in fit_parameter_aspects:
-        f_out.write(f"OUTPUT:{fit_parameters.get(aspect)}\n")
-    alpha = aux.get("alpha", 1e-5)
-    regularization_method = aux.get("regularization_method", 0)
-    limit_order_of_mag = aux.get("limit_order_of_mag", False)
-    f_out.write(f"OUTPUT:{alpha}\n")
-    f_out.write(f"OUTPUT:{regularization_method}\n")
-    f_out.write(f"OUTPUT:{limit_order_of_mag}\n")
+# def generate_differentials_wrapper(measurements, cell_model, f_out):
+#     from PV_Circuit_Model.data_fitting_tandem_cell import generate_differentials
+#     M, Y, fit_parameters, aux = generate_differentials(measurements, cell_model)
+#     f_out.write(f"OUTPUT:{json.dumps(M.tolist())}\n")
+#     f_out.write(f"OUTPUT:{json.dumps(Y.tolist())}\n")
+#     fit_parameter_aspects = [
+#         "limit_order_of_mag", "this_min", "this_max", "abs_min", "abs_max",
+#         "min", "max", "value", "nominal_value", "d_value", "is_log"
+#     ]
+#     for aspect in fit_parameter_aspects:
+#         f_out.write(f"OUTPUT:{fit_parameters.get(aspect)}\n")
+#     alpha = aux.get("alpha", 1e-5)
+#     regularization_method = aux.get("regularization_method", 0)
+#     limit_order_of_mag = aux.get("limit_order_of_mag", False)
+#     f_out.write(f"OUTPUT:{alpha}\n")
+#     f_out.write(f"OUTPUT:{regularization_method}\n")
+#     f_out.write(f"OUTPUT:{limit_order_of_mag}\n")
 
 def handle_pv_command(words, variables, f_out):
     command = words[0]
@@ -198,7 +198,7 @@ def handle_pv_command(words, variables, f_out):
                     function_calls[i](number)
                 except ValueError:
                     return "FAILED"
-            generate_differentials_wrapper(variables["measurements"], variables["cell_model"], f_out)
+            # generate_differentials_wrapper(variables["measurements"], variables["cell_model"], f_out)
         return "FINISHED"
     f_out.write(f"Unknown command: {command}\n")
     f_out.flush()

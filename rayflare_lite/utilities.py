@@ -6,7 +6,7 @@
 import numpy as np
 from rayflare_lite.interpolate import interp1d
 import os
-from sparse import load_npz
+from rayflare_lite.sparse import load_npz
 import xarray as xr
 
 from rayflare_lite import logger

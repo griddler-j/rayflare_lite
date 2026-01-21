@@ -4,7 +4,7 @@
 # Journal of Open Source Software, 6(65), 3460. https://doi.org/10.21105/joss.03460
 
 import numpy as np
-from sparse import load_npz, dot, COO, stack, einsum
+from rayflare_lite.sparse import load_npz, dot, COO, stack, einsum
 from rayflare_lite.angles import make_angle_vector, fold_phi, overall_bin
 import os
 import xarray as xr

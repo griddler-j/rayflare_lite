@@ -15,7 +15,7 @@ from rayflare_lite.angles import make_angle_vector, make_roughness
 from rayflare_lite.matrix_formalism.ideal_cases import lambertian_matrix, mirror_matrix
 from rayflare_lite.utilities import get_savepath, get_wavelength
 from rayflare_lite import logger
-from sparse import COO, stack
+from rayflare_lite.sparse import COO, stack
 
 def make_D(alphas, thick, thetas):
     """

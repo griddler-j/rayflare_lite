@@ -16,7 +16,7 @@ from math import atan2
 from random import random
 from itertools import product
 import xarray as xr
-from sparse import COO, save_npz, stack
+from rayflare_lite.sparse import COO, save_npz, stack
 from joblib import Parallel, delayed
 from copy import deepcopy
 from warnings import warn
@@ -240,43 +240,44 @@ def RT(
         )
 
         if analytical_approx is False:
-            if options["random_ray_position"]:
-                xs = np.random.uniform(x_limits[0], x_limits[1], nx)
-                ys = np.random.uniform(y_limits[0], y_limits[1], ny)
+            assert(1==0)
+            # if options["random_ray_position"]:
+            #     xs = np.random.uniform(x_limits[0], x_limits[1], nx)
+            #     ys = np.random.uniform(y_limits[0], y_limits[1], ny)
 
-            else:
-                xs = np.linspace(x_limits[0], x_limits[1], nx)
-                ys = np.linspace(y_limits[0], y_limits[1], ny)
+            # else:
+            #     xs = np.linspace(x_limits[0], x_limits[1], nx)
+            #     ys = np.linspace(y_limits[0], y_limits[1], ny)
 
-            allres = Parallel(n_jobs=n_jobs)(
-                delayed(RT_wl)(
-                    i1,
-                    wavelengths[i1],
-                    n_angles,
-                    nx,
-                    ny,
-                    widths,
-                    thetas_in,
-                    phis_in,
-                    h,
-                    xs,
-                    ys,
-                    nks,
-                    surfaces,
-                    pol,
-                    phi_sym,
-                    theta_intv,
-                    phi_intv,
-                    angle_vector,
-                    Fr_or_TMM,
-                    n_absorbing_layers,
-                    lookuptable,
-                    calc_profile,
-                    depth_spacing,
-                    side,
-                )
-                for i1 in range(len(wavelengths))
-            )
+            # allres = Parallel(n_jobs=n_jobs)(
+            #     delayed(RT_wl)(
+            #         i1,
+            #         wavelengths[i1],
+            #         n_angles,
+            #         nx,
+            #         ny,
+            #         widths,
+            #         thetas_in,
+            #         phis_in,
+            #         h,
+            #         xs,
+            #         ys,
+            #         nks,
+            #         surfaces,
+            #         pol,
+            #         phi_sym,
+            #         theta_intv,
+            #         phi_intv,
+            #         angle_vector,
+            #         Fr_or_TMM,
+            #         n_absorbing_layers,
+            #         lookuptable,
+            #         calc_profile,
+            #         depth_spacing,
+            #         side,
+            #     )
+            #     for i1 in range(len(wavelengths))
+            # )
         else:
             n0 = nks[0]
             n1 = nks[1]

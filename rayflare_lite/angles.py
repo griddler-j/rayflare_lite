@@ -8,7 +8,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib as mpl
-from sparse import COO, save_npz, stack
+from rayflare_lite.sparse import COO, save_npz, stack
 from joblib import Parallel, delayed
 
 

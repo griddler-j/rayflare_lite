@@ -4,7 +4,7 @@
 # Journal of Open Source Software, 6(65), 3460. https://doi.org/10.21105/joss.03460
 
 import numpy as np
-from sparse import COO, save_npz
+from rayflare_lite.sparse import COO, save_npz
 from rayflare_lite.angles import fold_phi
 from rayflare_lite.utilities import get_matrices_or_paths
 
