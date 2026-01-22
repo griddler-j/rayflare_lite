@@ -324,11 +324,12 @@ class _PlotAccessor:
         self._da = data_array
 
     def imshow(self, ax=None, **kwargs):
-        import matplotlib.pyplot as plt
+        assert(1==0)
+        # import matplotlib.pyplot as plt
 
-        if ax is None:
-            ax = plt.gca()
-        return ax.imshow(self._da.data, **kwargs)
+        # if ax is None:
+        #     ax = plt.gca()
+        # return ax.imshow(self._da.data, **kwargs)
 
 
 class _LocIndexer:

@@ -1,2 +1,5 @@
 __pycache__/
 temp/
+.venv/
+build/
+dist/

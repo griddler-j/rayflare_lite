@@ -1,38 +1,16 @@
-import json
-import shlex
-import signal
-import socket
-import select
-import sys
 import time
-from copy import deepcopy
-
-# This is just to prove it can load the c++ backend stuff
-from PV_Circuit_Model.circuit_model import IL, D1, D2, Dintrinsic_Si, Drev, R
-from PV_Circuit_Model.device_analysis import Cell_
-circuit_group = ( 
-    (IL(41e-3) | D1(10e-15) | D2(5e-9) | Dintrinsic_Si(180e-4) | Drev(V_shift=10) | R(1e5)) 
-    + R(1/3)
-)
-print(circuit_group.get_Pmax()) # this sets the operating point to MPP, so that the animation will proceed in the next draw step
-
-# sys.path.insert(0, "D:\Griddler\PV_circuit_model")
-
 import numpy as np
+import pandas as pd
+from copy import deepcopy
 
 from rayflare_lite.structure import Layer
 from rayflare_lite.textures.standard_rt_textures import planar_surface, regular_pyramids
 from rayflare_lite.structure import Interface, BulkLayer, Structure, Roughness, SimpleMaterial
 from rayflare_lite.matrix_formalism import calculate_RAT, process_structure
 from rayflare_lite.options import default_options
-from PV_Circuit_Model.measurement import get_measurements
-from PV_Circuit_Model.data_fitting_tandem_cell import (
-    analyze_solar_cell_measurements, generate_differentials
-)
 
 SC = None
 output_file = None
-SHOULD_EXIT = False
 wavelengths = np.arange(300,1201,5) * 1e-9
 bulk_indices = [0,0,0]
 active_interface = [-1,-1,-1,-1,-1,-1] 
@@ -87,132 +65,6 @@ def create_new_layer(name, thickness, n_file_path, k_file_path=None):
     mat = create_new_material(name, n_file_path, k_file_path)
     layer = Layer(thickness*1e-9, mat)
     return layer
-
-def _sigint(_sig, _frm):
-    # Allow Ctrl+C to request shutdown even during blocking waits.
-    global SHOULD_EXIT
-    SHOULD_EXIT = True
-
-signal.signal(signal.SIGINT, _sigint)
-
-def analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_out, variables):
-    measurements = get_measurements(measurements_folder)
-    cell_model, _ = analyze_solar_cell_measurements(
-        measurements,
-        sample_info=sample_info,
-        use_fit_dashboard=True,
-        f_out=f_out,
-        is_tandem=sample_info["is_tandem"],
-        silent_mode=True,
-        parallel=True,
-    )
-    variables["measurements"] = measurements
-    variables["cell_model"] = cell_model
-    if sample_info["is_tandem"]:
-        output = (
-            "OUTPUT:["
-            f"{cell_model.cells[0].J01()},{cell_model.cells[0].J02()},{cell_model.cells[0].specific_shunt_cond()},"
-            f"{cell_model.cells[1].J01()},{cell_model.cells[1].J02()},{cell_model.cells[1].PC_J01()},"
-            f"{cell_model.cells[1].specific_shunt_cond()},{cell_model.specific_Rs()}]\n"
-        )
-    else:
-        output = (
-            "OUTPUT:["
-            f"{cell_model.J01()},{cell_model.J02()},{cell_model.specific_shunt_cond()},{cell_model.specific_Rs()}]\n"
-        )
-    f_out.write(output)
-    f_out.flush()
-
-# def generate_differentials_wrapper(measurements, cell_model, f_out):
-#     from PV_Circuit_Model.data_fitting_tandem_cell import generate_differentials
-#     M, Y, fit_parameters, aux = generate_differentials(measurements, cell_model)
-#     f_out.write(f"OUTPUT:{json.dumps(M.tolist())}\n")
-#     f_out.write(f"OUTPUT:{json.dumps(Y.tolist())}\n")
-#     fit_parameter_aspects = [
-#         "limit_order_of_mag", "this_min", "this_max", "abs_min", "abs_max",
-#         "min", "max", "value", "nominal_value", "d_value", "is_log"
-#     ]
-#     for aspect in fit_parameter_aspects:
-#         f_out.write(f"OUTPUT:{fit_parameters.get(aspect)}\n")
-#     alpha = aux.get("alpha", 1e-5)
-#     regularization_method = aux.get("regularization_method", 0)
-#     limit_order_of_mag = aux.get("limit_order_of_mag", False)
-#     f_out.write(f"OUTPUT:{alpha}\n")
-#     f_out.write(f"OUTPUT:{regularization_method}\n")
-#     f_out.write(f"OUTPUT:{limit_order_of_mag}\n")
-
-def handle_pv_command(words, variables, f_out):
-    command = words[0]
-    if command == "QUIT":
-        return "BYE"
-    if command == "MAKESTARTINGGUESS":
-        if len(words) >= 6:
-            measurements_folder = words[1]
-            try:
-                wafer_area = float(words[2])
-            except ValueError:
-                wafer_area = None
-            try:
-                bottom_cell_thickness = float(words[3])
-            except ValueError:
-                bottom_cell_thickness = None
-            enable_Auger = words[4]
-            try:
-                bottom_cell_JL = float(words[5])
-            except ValueError:
-                bottom_cell_JL = None
-            top_cell_JL = None
-            if len(words) > 6:
-                try:
-                    top_cell_JL = float(words[6])
-                except ValueError:
-                    top_cell_JL = None
-            if wafer_area is not None and bottom_cell_thickness is not None:
-                sample_info = {
-                    "area": wafer_area,
-                    "bottom_cell_thickness": bottom_cell_thickness,
-                    "enable_Auger": enable_Auger,
-                }
-                sample_info["is_tandem"] = top_cell_JL is not None and bottom_cell_JL is not None
-                analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_out, variables)
-                if sample_info["is_tandem"]:
-                    variables["cell_model"].set_JL([bottom_cell_JL, top_cell_JL])
-                else:
-                    variables["cell_model"].set_JL(bottom_cell_JL)
-                _, Vmp, _ = variables["cell_model"].get_Pmax(return_op_point=True)
-                f_out.write(f"OUTPUT:{Vmp}\n")
-        return "FINISHED"
-    if command == "SIMULATEANDCOMPARE":
-        if "cell_model" in variables:
-            if len(words) == 9:
-                function_calls = [
-                    variables["cell_model"].cells[0].set_J01,
-                    variables["cell_model"].cells[0].set_J02,
-                    variables["cell_model"].cells[0].set_specific_shunt_cond,
-                    variables["cell_model"].cells[1].set_J01,
-                    variables["cell_model"].cells[1].set_J02,
-                    variables["cell_model"].cells[1].set_PC_J01,
-                    variables["cell_model"].cells[1].set_specific_shunt_cond,
-                    variables["cell_model"].set_specific_Rs_cond,
-                ]
-            else:
-                function_calls = [
-                    variables["cell_model"].set_J01,
-                    variables["cell_model"].set_J02,
-                    variables["cell_model"].set_specific_shunt_cond,
-                    variables["cell_model"].set_specific_Rs_cond,
-                ]
-            for i in range(len(function_calls)):
-                try:
-                    number = float(words[i + 1])
-                    function_calls[i](number)
-                except ValueError:
-                    return "FAILED"
-            # generate_differentials_wrapper(variables["measurements"], variables["cell_model"], f_out)
-        return "FINISHED"
-    f_out.write(f"Unknown command: {command}\n")
-    f_out.flush()
-    return "FINISHED"
 
 # z_front is in um
 def bulk_profile(results, z_front, out_path):
@@ -525,116 +377,49 @@ def run_simulation(top_medium, bottom_medium, front_materials, front_roughness, 
 
             if out_path is not None:
                 output = np.array(output).T
-                header = ",".join(columns)
-                np.savetxt(out_path, output, delimiter=",", header=header, comments="")
+                df = pd.DataFrame(output, columns=columns)
+                df.to_csv(out_path, index=False)   
 
     return front_results, rear_results
 
 
-def read_block_sock(conn):
-    """Read until a line equal to END is seen or the peer closes."""
-    buf = b""
+input_file_path = 'logfile.txt'
+output_file_path = 'output_log.txt'
+
+# with open(input_file_path, 'w') as file:
+#     pass  # Just opening the file is enough to erase its contents
+
+# with open(output_file_path, 'w') as file:
+#     pass  # Just opening the file is enough to erase its contents
+
+with open(input_file_path, 'r') as input_file:
+    output_file = open(output_file_path, 'a')
+
+    # # Move to the end of the file
+    # input_file.seek(0, 2) 
+    
     while True:
-        r, _, _ = select.select([conn], [], [], 1.0)
-        if not r:
-            if SHOULD_EXIT:
-                return None
-            continue
-
-        chunk = conn.recv(4096)
-        if not chunk:
-            if buf:
-                text = buf.decode("utf-8", errors="replace")
-                lines = [ln for ln in text.splitlines() if ln.strip()]
-                return lines
-            return None
-
-        buf += chunk
-        if b"\r\nEND\r\n" in buf or b"\nEND\n" in buf or b"\rEND\r" in buf or b"\nEND\r\n" in buf:
-            text = buf.decode("utf-8", errors="replace")
-            lines = []
-            for ln in text.splitlines():
-                if ln.strip().upper() == "END":
-                    return lines
-                lines.append(ln)
-
-def handle_block(lines, variables, f_out):
-    global output_file
-    output_file = f_out
-    for line in lines:
-        line = line.strip()
+        line = input_file.readline()
         if not line:
+            time.sleep(0.01)  # Sleep briefly before trying again
             continue
-        if ":" in line:
-            line_before_colon, line_after_colon = line.split(":", 1)
-            line_after_colon = line_after_colon.strip()
-            f_out.write(line_before_colon + ": received\n")
-            if line_after_colon == "exit":
-                f_out.write(line_before_colon + ": executed\n")
-                f_out.flush()
-                return "BYE"
-            try:
-                exec(line_after_colon)
-            except Exception as e:
-                f_out.write(f"-1: Error: {e}\n")
-                f_out.flush()
-                return "FAILED"
-            f_out.write(line_before_colon + ": executed\n")
-            f_out.flush()
-            continue
-        words = shlex.split(line)
-        if not words:
-            continue
-        result = handle_pv_command(words, variables, f_out)
-        if result == "BYE":
-            return "BYE"
-    return "FINISHED"
-
-def main():
-    host, port = "127.0.0.1", 5007
-    if len(sys.argv) >= 2:
+        print(line)
+        line_split = line.split(":",1)
+        line_before_colon = line_split[0]
+        line_after_colon = line_split[1].strip()
+        output_file.write(line_before_colon + ": received\n")
+        if line_after_colon=="exit":
+            output_file.write(line_before_colon + ": executed\n")
+            break
+        print(f"New line: {line.strip()}")
+        # exec(line_after_colon)
         try:
-            port = int(sys.argv[1])
-        except ValueError:
-            print("usage: rayflare_textbased_server.py <port>")
-            sys.exit(1)
-
-    print(f"Starting server on {host}:{port}")
-
-    variables = {}
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((host, port))
-        s.listen(8)
-        s.settimeout(1.0)
-
-        try:
-            while not SHOULD_EXIT:
-                try:
-                    conn, addr = s.accept()
-                except socket.timeout:
-                    continue
-
-                with conn:
-                    print("ACCEPTED:", addr)
-                    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    f_out = conn.makefile("w", encoding="utf-8", newline="\n")
-
-                    while not SHOULD_EXIT:
-                        block = read_block_sock(conn)
-                        if block is None:
-                            break
-                        result = handle_block(block, variables, f_out)
-                        if result == "BYE":
-                            f_out.write("FINISHED\n")
-                            f_out.flush()
-                            return
-                        f_out.write(result + "\n")
-                        f_out.flush()
-        except KeyboardInterrupt:
-            pass
-
-    print("Server stopped.")
-
-if __name__ == "__main__":
-    main()
+            exec(line_after_colon)
+        except Exception as e:
+            # This block will catch any exception and print the error message
+            print(f"An error occurred: {e}")
+            output_file.write(f"-1: Error: {e}\n")
+            break
+        output_file.write(line_before_colon + ": executed\n")
+        output_file.flush()  # Ensure the line is written to the file immediately
+    output_file.close()

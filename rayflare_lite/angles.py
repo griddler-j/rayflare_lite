@@ -5,9 +5,9 @@
 
 import numpy as np
 import rayflare_lite.xarray as xr
-import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib as mpl
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+# import matplotlib as mpl
 from rayflare_lite.sparse import COO, save_npz, stack
 from joblib import Parallel, delayed
 
@@ -256,34 +256,35 @@ def weighted_mean(x, summing_over, axis, dtype=None):
 
 
 def plot_theta_summary(summat, summat_back, n_points=100):
+    assert(1==0)
 
-    whole_mat = xr.concat((summat, summat_back), dim=r"$\theta_{in}$")
+    # whole_mat = xr.concat((summat, summat_back), dim=r"$\theta_{in}$")
 
-    whole_mat_imshow = whole_mat.rename(
-        {r"$\theta_{in}$": "theta_in", r"$\theta_{out}$": "theta_out"}
-    )
+    # whole_mat_imshow = whole_mat.rename(
+    #     {r"$\theta_{in}$": "theta_in", r"$\theta_{out}$": "theta_out"}
+    # )
 
-    whole_mat_imshow = whole_mat_imshow.interp(
-        theta_in=np.linspace(0, np.pi, n_points),
-        theta_out=np.linspace(0, np.pi, n_points),
-    )
+    # whole_mat_imshow = whole_mat_imshow.interp(
+    #     theta_in=np.linspace(0, np.pi, n_points),
+    #     theta_out=np.linspace(0, np.pi, n_points),
+    # )
 
-    whole_mat_imshow = whole_mat_imshow.rename(
-        {"theta_in": r"$\theta_{in}$", "theta_out": r"$\theta_{out}$"}
-    )
+    # whole_mat_imshow = whole_mat_imshow.rename(
+    #     {"theta_in": r"$\theta_{in}$", "theta_out": r"$\theta_{out}$"}
+    # )
 
-    palhf = sns.cubehelix_palette(256, start=0.5, rot=-0.9)
-    palhf.reverse()
-    seamap = mpl.colors.ListedColormap(palhf)
+    # palhf = sns.cubehelix_palette(256, start=0.5, rot=-0.9)
+    # palhf.reverse()
+    # seamap = mpl.colors.ListedColormap(palhf)
 
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax = whole_mat_imshow.plot.imshow(ax=ax, cmap=seamap)
-    # ax = plt.subplot(212)
-    fig.savefig("matrix.png", bbox_inches="tight", format="png")
-    # ax = Tth.plot.imshow(ax=ax)
+    # fig = plt.figure()
+    # ax = plt.subplot(111)
+    # ax = whole_mat_imshow.plot.imshow(ax=ax, cmap=seamap)
+    # # ax = plt.subplot(212)
+    # fig.savefig("matrix.png", bbox_inches="tight", format="png")
+    # # ax = Tth.plot.imshow(ax=ax)
 
-    plt.show()
+    # plt.show()
 
 
 def theta_summary_A(A_mat, angle_vector):

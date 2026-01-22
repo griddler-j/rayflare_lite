@@ -9,8 +9,6 @@ from rayflare_lite.angles import make_angle_vector, fold_phi, overall_bin
 import os
 import rayflare_lite.xarray as xr
 from rayflare_lite.state import State
-import time
-import matplotlib.pyplot as plt
 
 from rayflare_lite.structure import Interface, BulkLayer
 from rayflare_lite.utilities import get_savepath, get_wavelength
