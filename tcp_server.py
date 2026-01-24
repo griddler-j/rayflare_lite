@@ -566,20 +566,20 @@ def handle_block(lines, variables, f_out):
         if not line:
             continue
         if "::" in line:
-            line_before_colon, line_after_colon = line.split(":", 1)
+            line_before_colon, line_after_colon = line.split("::", 1)
             line_after_colon = line_after_colon.strip()
-            f_out.write(line_before_colon + ": received\n")
+            f_out.write(line_before_colon + ":: received\n")
             if line_after_colon == "exit":
-                f_out.write(line_before_colon + ": executed\n")
+                f_out.write(line_before_colon + ":: executed\n")
                 f_out.flush()
                 return "BYE"
             try:
                 exec(line_after_colon)
             except Exception as e:
-                f_out.write(f"-1: Error: {e}\n")
+                f_out.write(f"-1:: Error: {e}\n")
                 f_out.flush()
                 return "FAILED"
-            f_out.write(line_before_colon + ": executed\n")
+            f_out.write(line_before_colon + ":: executed\n")
             f_out.flush()
             continue
         words = shlex.split(line)
