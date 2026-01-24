@@ -7,14 +7,14 @@ import sys
 import time
 from copy import deepcopy
 
-# This is just to prove it can load the c++ backend stuff
-from PV_Circuit_Model.circuit_model import IL, D1, D2, Dintrinsic_Si, Drev, R
-from PV_Circuit_Model.device_analysis import Cell_
-circuit_group = ( 
-    (IL(41e-3) | D1(10e-15) | D2(5e-9) | Dintrinsic_Si(180e-4) | Drev(V_shift=10) | R(1e5)) 
-    + R(1/3)
-)
-print(circuit_group.get_Pmax()) # this sets the operating point to MPP, so that the animation will proceed in the next draw step
+# # This is just to prove it can load the c++ backend stuff
+# from PV_Circuit_Model.circuit_model import IL, D1, D2, Dintrinsic_Si, Drev, R
+# from PV_Circuit_Model.device_analysis import Cell_
+# circuit_group = ( 
+#     (IL(41e-3) | D1(10e-15) | D2(5e-9) | Dintrinsic_Si(180e-4) | Drev(V_shift=10) | R(1e5)) 
+#     + R(1/3)
+# )
+# print(circuit_group.get_Pmax()) # this sets the operating point to MPP, so that the animation will proceed in the next draw step
 
 # sys.path.insert(0, "D:\Griddler\PV_circuit_model")
 
@@ -565,7 +565,7 @@ def handle_block(lines, variables, f_out):
         line = line.strip()
         if not line:
             continue
-        if ":" in line:
+        if "::" in line:
             line_before_colon, line_after_colon = line.split(":", 1)
             line_after_colon = line_after_colon.strip()
             f_out.write(line_before_colon + ": received\n")
