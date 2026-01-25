@@ -15,7 +15,7 @@ from rayflare_lite.angles import make_angle_vector, make_roughness
 from rayflare_lite.matrix_formalism.ideal_cases import lambertian_matrix, mirror_matrix
 from rayflare_lite.utilities import get_savepath, get_wavelength
 from rayflare_lite import logger
-from rayflare_lite.sparse import COO, stack
+from rayflare_lite.sparse import COO, DiagStack, stack
 
 def make_D(alphas, thick, thetas):
     """
@@ -28,12 +28,7 @@ def make_D(alphas, thick, thetas):
     :return:
     """
     diag = np.exp(-alphas[:, None] * thick / abs(np.cos(thetas[None, :])))
-    # print(thetas)
-    # print(diag)
-    # print(thick)
-    # assert(1==0)
-    D_1 = stack([COO.from_numpy(np.diag(x)) for x in diag])
-    return D_1
+    return DiagStack(diag)
 
 def process_structure(SC, options, save_location="default", overwrite=False):
     """

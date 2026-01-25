@@ -4,7 +4,7 @@
 # Journal of Open Source Software, 6(65), 3460. https://doi.org/10.21105/joss.03460
 
 import numpy as np
-from rayflare_lite.sparse import load_npz, dot, COO, stack, einsum
+from rayflare_lite.sparse import load_npz, dot, COO, DiagStack, stack, einsum
 from rayflare_lite.angles import make_angle_vector, fold_phi, overall_bin
 import os
 import rayflare_lite.xarray as xr
@@ -155,8 +155,7 @@ def make_D(alphas, thick, thetas):
     :return:
     """
     diag = np.exp(-alphas[:, None] * thick / abs(np.cos(thetas[None, :])))
-    D_1 = stack([COO.from_numpy(np.diag(x)) for x in diag])
-    return D_1
+    return DiagStack(diag)
 
 # using einsum yields roughly 25 times speed increase (if for loop loops over 60 wavelengths)
 def dot_wl(mat, vec):

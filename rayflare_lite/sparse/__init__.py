@@ -1,5 +1,31 @@
 import numpy as np
 
+try:
+    import scipy.sparse as _sp
+except Exception:
+    _sp = None
+
+
+class DiagStack:
+    def __init__(self, diag):
+        self.diag = np.asarray(diag)
+        if self.diag.ndim != 2:
+            raise ValueError("DiagStack expects a 2D array (n_stack, n_diag)")
+
+    @property
+    def shape(self):
+        return (self.diag.shape[0], self.diag.shape[1], self.diag.shape[1])
+
+    @property
+    def ndim(self):
+        return 3
+
+    def todense(self):
+        out = np.zeros(self.shape, dtype=self.diag.dtype)
+        idx = np.arange(self.diag.shape[1])
+        out[:, idx, idx] = self.diag
+        return out
+
 
 class COO:
     def __init__(
@@ -85,7 +111,10 @@ class COO:
 
     @classmethod
     def from_numpy(cls, arr):
-        dense = np.asarray(arr)
+        if hasattr(arr, "toarray"):
+            dense = arr.toarray()
+        else:
+            dense = np.asarray(arr)
         if dense.size == 0:
             coords = np.empty((dense.ndim, 0), dtype=np.intp)
             data = dense.reshape(-1)
@@ -104,6 +133,27 @@ def stack(arrays, axis=0):
 
 
 def einsum(subscripts, *operands, **kwargs):
+    if subscripts == "ijk,ik->ij":
+        op0, op1 = operands
+        vec = op1.data if isinstance(op1, COO) else np.asarray(op1)
+        if isinstance(op0, DiagStack):
+            result = op0.diag * vec
+            return COO.from_numpy(result)
+        if isinstance(op0, COO) and op0.ndim == 3:
+            result = np.zeros((op0.shape[0], op0.shape[1]), dtype=vec.dtype)
+            vals = op0.data * vec[op0.coords[0], op0.coords[2]]
+            np.add.at(result, (op0.coords[0], op0.coords[1]), vals)
+            return COO.from_numpy(result)
+
+    if subscripts == "jk,ik->ij":
+        op0, op1 = operands
+        vec = op1.data if isinstance(op1, COO) else np.asarray(op1)
+        if isinstance(op0, COO) and op0.ndim == 2:
+            result = np.zeros((vec.shape[0], op0.shape[0]), dtype=vec.dtype)
+            vals = vec[:, op0.coords[1]] * op0.data
+            np.add.at(result, (slice(None), op0.coords[0]), vals)
+            return COO.from_numpy(result)
+
     dense_ops = [op.todense() if isinstance(op, COO) else op for op in operands]
     result = np.einsum(subscripts, *dense_ops, **kwargs)
     if isinstance(result, np.ndarray):
@@ -112,6 +162,13 @@ def einsum(subscripts, *operands, **kwargs):
 
 
 def dot(a, b):
+    if _sp is not None and isinstance(a, COO) and a.ndim == 2 and not isinstance(b, COO):
+        mat = _sp.coo_matrix((a.data, (a.coords[0], a.coords[1])), shape=a.shape)
+        result = mat.dot(np.asarray(b))
+        if isinstance(result, np.ndarray):
+            return COO.from_numpy(result)
+        return result
+
     a_dense = a.todense() if isinstance(a, COO) else a
     b_dense = b.todense() if isinstance(b, COO) else b
     result = np.dot(a_dense, b_dense)
@@ -149,4 +206,4 @@ def load_npz(filename):
         )
 
 
-__all__ = ["COO", "dot", "einsum", "load_npz", "save_npz", "stack"]
+__all__ = ["COO", "DiagStack", "dot", "einsum", "load_npz", "save_npz", "stack"]
