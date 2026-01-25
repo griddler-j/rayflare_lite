@@ -1,10 +1,5 @@
 import numpy as np
 
-try:
-    import scipy.sparse as _sp
-except Exception:
-    _sp = None
-
 
 class DiagStack:
     def __init__(self, diag):
@@ -162,13 +157,6 @@ def einsum(subscripts, *operands, **kwargs):
 
 
 def dot(a, b):
-    if _sp is not None and isinstance(a, COO) and a.ndim == 2 and not isinstance(b, COO):
-        mat = _sp.coo_matrix((a.data, (a.coords[0], a.coords[1])), shape=a.shape)
-        result = mat.dot(np.asarray(b))
-        if isinstance(result, np.ndarray):
-            return COO.from_numpy(result)
-        return result
-
     a_dense = a.todense() if isinstance(a, COO) else a
     b_dense = b.todense() if isinstance(b, COO) else b
     result = np.dot(a_dense, b_dense)
