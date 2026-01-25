@@ -260,11 +260,13 @@ def layer_profile(results, z_front, which_interface, which_layer, out_path):
         return
     
     interface_count = 0
+    prof_layers = None
     for i1, struct in enumerate(SC):        
         if isinstance(struct, Interface):
             if which_stack==interface_count:
                 Aprof = SC.TMM_lookup_table[i1]['Aprof']
                 Aprof = 0.5*(Aprof.loc[dict(pol='s')]+Aprof.loc[dict(pol='p')]).values
+                prof_layers = struct.prof_layers
                 break
             interface_count += 1
 
@@ -272,8 +274,15 @@ def layer_profile(results, z_front, which_interface, which_layer, out_path):
     results_pero = np.sum(results_per_pass["a"][which_stack], 0)[:, [which_layer]]
     overall_A = results_pero[:,0] # just flatten
 
-    Aprof_front = Aprof[which_layer][0] # layer1,side1
-    Aprof_rear = Aprof[which_layer][1] # backside 
+    prof_index = which_layer
+    if prof_layers is not None:
+        target_layer = which_layer + 1
+        if target_layer not in prof_layers:
+            return
+        prof_index = prof_layers.index(target_layer)
+
+    Aprof_front = Aprof[prof_index][0] # layer1,side1
+    Aprof_rear = Aprof[prof_index][1] # backside 
     front_local_angles = results[0]['front_local_angles'][which_stack]
     rear_local_angles = results[0]['rear_local_angles'][which_stack]
 
@@ -573,6 +582,7 @@ def handle_block(lines, variables, f_out):
                 f_out.write(line_before_colon + ":: executed\n")
                 f_out.flush()
                 return "BYE"
+            print(line_after_colon)
             try:
                 exec(line_after_colon, globals(), variables)
             except Exception as e:
