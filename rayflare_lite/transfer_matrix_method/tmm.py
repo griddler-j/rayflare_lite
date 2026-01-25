@@ -7,7 +7,6 @@ import numpy as np
 import rayflare_lite.xarray as xr
 from rayflare_lite.sparse import COO, save_npz, stack
 import time
-from joblib import Parallel, delayed
 import pickle
 
 from rayflare_lite.absorption_calculator import tmm_core_vec as tmm
@@ -505,9 +504,20 @@ def TMM(
         bin_out_r = theta_first_index[binned_theta_out_r] + phi_ind.astype(int)
 
         # jobs:1, 0.0328s; 2, 0.0376s; 4, 0.035103s; 8, 0.0561s            
-        mats = Parallel(n_jobs=1)(
-                delayed(make_matrix_J)(i1, angles_in.shape[0], wavelengths, angle_vector.astype(int), bin_out_r, output_R, output_Alayer, bin_out_t, output_T)             
-                for i1 in range(angles_in.shape[0]))
+        mats = [
+            make_matrix_J(
+                i1,
+                angles_in.shape[0],
+                wavelengths,
+                angle_vector.astype(int),
+                bin_out_r,
+                output_R,
+                output_Alayer,
+                bin_out_t,
+                output_T,
+            )
+            for i1 in range(angles_in.shape[0])
+        ]
         fullmat_backscatter = stack([item[0] for item in mats])
         fullmat_forwardscatter = stack([item[1] for item in mats])
         A_mat = stack([item[2] for item in mats])

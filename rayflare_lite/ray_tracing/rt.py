@@ -16,7 +16,6 @@ from random import random
 from itertools import product
 import rayflare_lite.xarray as xr
 from rayflare_lite.sparse import COO, save_npz, stack
-from joblib import Parallel, delayed
 from copy import deepcopy
 from warnings import warn
 from rayflare_lite.state import State
@@ -1032,8 +1031,7 @@ class rt_structure:
            - nx and ny: number of points to scan across the surface in the x and y directions (integers)
            - random_ray_position: True/False. instead of scanning across the surface, choose nx*ny points randomly
            - randomize_surface: True/False. Randomize the ray position in the x/y direction before each surface interaction
-           - parallel: True/False. Whether to execute calculations in parallel
-           - n_jobs: n_jobs argument for Parallel function of joblib. Controls how many threads are used.
+           - parallel: True/False. Whether to execute calculations in parallel (currently runs serially).
            - x_limits: x limits (in same units as the size of the RTSurface) between which incident rays will be generated
            - y_limits: y limits (in same units as the size of the RTSurface) between which incident rays will be generated
 
@@ -1174,8 +1172,8 @@ class rt_structure:
             depths.append(z_pos[depth_indices[i1]] - np.cumsum(widths)[i1 - 1])
 
         # pr.enable()
-        allres = Parallel(n_jobs=n_jobs)(
-            delayed(parallel_inner)(
+        allres = [
+            parallel_inner(
                 nks[:, i1],
                 alphas[:, i1],
                 r_a_0,
@@ -1202,7 +1200,7 @@ class rt_structure:
                 self.lambertian_results,
             )
             for i1 in range(len(wavelengths))
-        )
+        ]
         # pr.disable()
 
         Is = np.stack([item[0] for item in allres])

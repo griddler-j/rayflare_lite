@@ -9,7 +9,6 @@ import rayflare_lite.xarray as xr
 # import seaborn as sns
 # import matplotlib as mpl
 from rayflare_lite.sparse import COO, save_npz, stack
-from joblib import Parallel, delayed
 
 
 def make_angle_vector(n_angle_bins, phi_sym, c_azimuth, theta_spacing="sin", output_N_azimuths=False):
@@ -145,10 +144,23 @@ def make_roughness(stdev, phi_sym, theta_intv, phi_intv, N_azimuths, theta_first
     direction = np.column_stack((np.sin(thetas_in)*np.cos(phis_in), np.sin(thetas_in)*np.sin(phis_in), -np.cos(thetas_in)))
     dir1,dir2 = make_arbitrary_perpendicular_directions(direction)
     scatter_angle_vector, intensities = make_scatter_angle_vector(stdev, 7, 1, theta_spacing="sin")
-    allres = Parallel(n_jobs=1)(
-        delayed(scatter)(direction[i1],dir1[i1],dir2[i1],scatter_angle_vector, intensities, phi_sym, theta_intv, phi_intv, N_azimuths, theta_first_index, angle_vector, num_wl)
-                    for i1 in range(direction.shape[0])
-                )
+    allres = [
+        scatter(
+            direction[i1],
+            dir1[i1],
+            dir2[i1],
+            scatter_angle_vector,
+            intensities,
+            phi_sym,
+            theta_intv,
+            phi_intv,
+            N_azimuths,
+            theta_first_index,
+            angle_vector,
+            num_wl,
+        )
+        for i1 in range(direction.shape[0])
+    ]
     allArrays = stack([item for item in allres])
     # in angles, wavelengths, out angles --> wavelengths, out angles, in angles
     allArrays = np.transpose(allArrays, (1, 2, 0))
