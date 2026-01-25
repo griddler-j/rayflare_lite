@@ -234,9 +234,13 @@ class SimpleMaterial():
             self.nk_parameters = np.array(self.nk_parameters)
             self.nk_parameter = self.nk_parameters[0]
     def n(self,x):
+        if isinstance(self.n_data, list):
+            return np.interp(x, self.n_data[0][0], self.n_data[0][1])
         return np.interp(x, self.n_data[0], self.n_data[1])
     def k(self,x):
-        return np.interp(x, self.n_data[0], self.n_data[1])
+        if isinstance(self.k_data, list):
+            return np.interp(x, self.k_data[0][0], self.k_data[0][1])
+        return np.interp(x, self.k_data[0], self.k_data[1])
     def alpha(self, wavelength):
         return 4 * math.pi * self.k(wavelength) / wavelength
 
