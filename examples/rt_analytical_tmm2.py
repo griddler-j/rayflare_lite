@@ -102,7 +102,7 @@ process_structure(SC, options, overwrite=True)
 results_RT = calculate_RAT(SC, options)
 print("time: ", time.time()-t1)
 RAT = results_RT[0]['RAT']
-wl = RAT['wl']*1e9
+wl = RAT.coords["wl"].data*1e9
 R = np.array(RAT['R'][0])
 Tfirst = np.array(RAT['Tfirst'])
 A = 1 - R - Tfirst

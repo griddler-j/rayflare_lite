@@ -668,6 +668,11 @@ def matrix_multiplication(
                     name="Rfirst",
                 )
 
+                Tfirst = xr.DataArray(
+                    np.array(np.sum(vb_2[-1][-1], axis=1)),
+                    name="Tfirst",
+                )
+
                 a[-1].append(
                     dot_wl(Ab[-1], v0)
                 )  # absorbed in front surface at first interaction
@@ -682,6 +687,11 @@ def matrix_multiplication(
                 Rfirst = xr.DataArray(
                     np.array(np.sum(vr[0][-1], axis=1)),
                     name="Rfirst",
+                )
+
+                Tfirst = xr.DataArray(
+                    np.array(np.sum(vf_1[0][-1], axis=1)),
+                    name="Tfirst",
                 )
 
                 a[0].append(
@@ -873,7 +883,7 @@ def matrix_multiplication(
 
         results_per_pass = {"r": vr, "t": vt, "a": a, "A": A}
 
-        RAT = xr.merge([R, A_bulk, T, Rfirst])
+        RAT = xr.merge([R, A_bulk, T, Rfirst, Tfirst])
         abscos = np.abs(np.cos(thetas))
 
         alphas = []
@@ -886,9 +896,6 @@ def matrix_multiplication(
             # bulk_absorbed_rear.append(total_vb_2[i]-dot_wl(D[i], total_vb_2[i]))
             bulk_absorbed_front.append(total_vf_1[i]*absorbed_fraction)
             bulk_absorbed_rear.append(total_vb_2[i]*absorbed_fraction)
-
-        print(RAT[0]["wl"])
-        assert(1==0)
 
         grand_results.append({'RAT':RAT, 'results_per_pass':results_per_pass, 'front_local_angles':front_local_angles, 'rear_local_angles':rear_local_angles, 'bulk_absorbed_front': bulk_absorbed_front, 'bulk_absorbed_rear': bulk_absorbed_rear, 'alphas':alphas, 'abscos': abscos})
 
