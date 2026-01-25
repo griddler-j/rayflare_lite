@@ -567,9 +567,33 @@ def read_block_sock(conn):
                     return lines
                 lines.append(ln)
 
+class _FilteredWriter:
+    def __init__(self, target):
+        self._target = target
+        self._buf = ""
+
+    def write(self, msg):
+        if not msg:
+            return 0
+        data = self._buf + msg.replace("\r", "\n")
+        parts = data.split("\n")
+        self._buf = parts.pop()
+        wrote = 0
+        for line in parts:
+            if line.strip() == "":
+                continue
+            wrote += self._target.write(line + "\n")
+        return wrote
+
+    def flush(self):
+        if self._buf.strip():
+            self._target.write(self._buf + "\n")
+        self._buf = ""
+        return self._target.flush()
+
 def handle_block(lines, variables, f_out):
     global output_file
-    output_file = f_out
+    output_file = _FilteredWriter(f_out)
     def _safe_write(msg):
         try:
             f_out.write(msg)
@@ -618,6 +642,9 @@ def main():
         except ValueError:
             print("usage: rayflare_textbased_server.py <port>")
             sys.exit(1)
+    if len(sys.argv) > 2:
+        print("usage: rayflare_textbased_server.py <port>")
+        sys.exit(1)
 
     print(f"Starting server on {host}:{port}")
 
@@ -629,7 +656,11 @@ def main():
         s.settimeout(1.0)
 
         try:
+            accept_deadline = time.time() + 60
             while not SHOULD_EXIT:
+                if time.time() >= accept_deadline:
+                    print("No connection within 60 seconds. Exiting.")
+                    return
                 try:
                     conn, addr = s.accept()
                 except socket.timeout:
@@ -643,7 +674,8 @@ def main():
                     while not SHOULD_EXIT:
                         block = read_block_sock(conn)
                         if block is None:
-                            break
+                            print("Connection closed. Exiting.")
+                            return
                         result = handle_block(block, variables, f_out)
                         if result == "BYE":
                             try:
@@ -656,7 +688,8 @@ def main():
                             f_out.write(result + "\n")
                             f_out.flush()
                         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
-                            break
+                            print("Connection closed. Exiting.")
+                            return
         except KeyboardInterrupt:
             pass
 
