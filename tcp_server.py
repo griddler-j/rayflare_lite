@@ -570,6 +570,13 @@ def read_block_sock(conn):
 def handle_block(lines, variables, f_out):
     global output_file
     output_file = f_out
+    def _safe_write(msg):
+        try:
+            f_out.write(msg)
+            f_out.flush()
+            return True
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            return False
     for line in lines:
         line = line.strip()
         if not line:
@@ -577,21 +584,23 @@ def handle_block(lines, variables, f_out):
         if "::" in line:
             line_before_colon, line_after_colon = line.split("::", 1)
             line_after_colon = line_after_colon.strip()
-            f_out.write(line_before_colon + ":: received\n")
+            if not _safe_write(line_before_colon + ":: received\n"):
+                return "BYE"
             if line_after_colon == "exit":
-                f_out.write(line_before_colon + ":: executed\n")
-                f_out.flush()
+                if not _safe_write(line_before_colon + ":: executed\n"):
+                    return "BYE"
                 return "BYE"
             print(line_after_colon)
             try:
                 exec(line_after_colon, globals(), variables)
             except Exception as e:
                 print(f"-1:: Error: {e}\n")
-                f_out.write(f"-1:: Error: {e}\n")
-                f_out.flush()
+                if isinstance(e, (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError)):
+                    return "BYE"
+                _safe_write(f"-1:: Error: {e}\n")
                 return "FAILED"
-            f_out.write(line_before_colon + ":: executed\n")
-            f_out.flush()
+            if not _safe_write(line_before_colon + ":: executed\n"):
+                return "BYE"
             continue
         words = shlex.split(line)
         if not words:
@@ -637,11 +646,17 @@ def main():
                             break
                         result = handle_block(block, variables, f_out)
                         if result == "BYE":
-                            f_out.write("FINISHED\n")
-                            f_out.flush()
+                            try:
+                                f_out.write("FINISHED\n")
+                                f_out.flush()
+                            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+                                pass
                             return
-                        f_out.write(result + "\n")
-                        f_out.flush()
+                        try:
+                            f_out.write(result + "\n")
+                            f_out.flush()
+                        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+                            break
         except KeyboardInterrupt:
             pass
 
