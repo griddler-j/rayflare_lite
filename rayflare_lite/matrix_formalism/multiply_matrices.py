@@ -125,18 +125,16 @@ def out_to_in_matrix(phi_sym, angle_vector, theta_intv, phi_intv):
     )
 
     phi_rebin = fold_phi(angle_vector[:, 2] + np.pi, phi_sym)
-
-    phi_out = xr.DataArray(
-        phi_rebin,
-        coords={"theta_bin": (["angle_in"], binned_theta_out)},
-        dims=["angle_in"],
-    )
-
-    bin_out = (
-        phi_out.groupby("theta_bin")
-        .map(overall_bin, args=(phi_intv, angle_vector[:, 0]))
-        .data
-    )
+    angle_theta_bins = angle_vector[:, 0].astype(int)
+    base_index = {}
+    for tb in np.unique(angle_theta_bins):
+        base_index[tb] = np.where(angle_theta_bins == tb)[0][0]
+    bin_out = np.empty(len(angle_vector), dtype=int)
+    for i in range(len(angle_vector)):
+        tb = int(binned_theta_out[i])
+        phi_bin = np.digitize(phi_rebin[i], phi_intv[tb], right=True) - 1
+        phi_bin = int(np.clip(phi_bin, 0, len(phi_intv[tb]) - 2))
+        bin_out[i] = base_index[tb] + phi_bin
 
     out_to_in[bin_out, np.arange(len(angle_vector))] = 1
 

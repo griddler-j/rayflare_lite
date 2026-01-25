@@ -207,32 +207,51 @@ def SolcoreMaterialToStr(material_input):
     return composition
 
 class SimpleMaterial():
+    def _load_nk_file(self, path):
+        data_ = np.loadtxt(path, delimiter=',', skiprows=1, encoding='utf-8')
+        if data_.ndim == 1:
+            data_ = data_.reshape(1, -1)
+        if data_.shape[1] < 3:
+            raise ValueError(f"Expected at least 3 columns in nk file: {path}")
+        k_col = 3 if data_.shape[1] > 3 else 2
+        n_data = data_[:, [0, 1]]
+        n_data[:, 0] /= 1.0e9
+        n_data = n_data.transpose()
+        k_data = data_[:, [0, k_col]]
+        k_data[:, 0] /= 1.0e9
+        k_data = k_data.transpose()
+        return n_data, k_data
+
+    def _load_n_or_k_file(self, path):
+        data_ = np.loadtxt(path, delimiter=',', skiprows=1, encoding='utf-8')
+        if data_.ndim == 1:
+            data_ = data_.reshape(1, -1)
+        if data_.shape[1] < 2:
+            raise ValueError(f"Expected at least 2 columns in file: {path}")
+        out = data_[:, [0, 1]]
+        out[:, 0] /= 1.0e9
+        return out.transpose()
+
     def load_nk_data(self):
         if isinstance(self.n_path, str):
-            data_ = np.loadtxt(self.n_path, delimiter=',', skiprows=1, encoding='utf-8')
-            self.n_data = data_[:,[0,1]]
-            self.n_data[:,0] /= 1.0e9
-            self.n_data = self.n_data.transpose()
-            self.k_data = data_[:,[0,3]]
-            self.k_data[:,0] /= 1.0e9
-            self.k_data = self.k_data.transpose()
+            self.n_data, self.k_data = self._load_nk_file(self.n_path)
         else: # a list
             self.n_data = []
             self.k_data = []
             self.nk_parameters = []
             for entry in self.n_path:
                 self.nk_parameters.append(entry['parameter'])
-                data_ = np.loadtxt(entry['path'], delimiter=',', skiprows=1, encoding='utf-8')
-                n_data = data_[:,[0,1]]
-                n_data[:,0] /= 1.0e9
-                n_data = n_data.transpose()
+                n_data, k_data = self._load_nk_file(entry['path'])
                 self.n_data.append(n_data)
-                k_data = data_[:,[0,3]]
-                k_data[:,0] /= 1.0e9
-                k_data = k_data.transpose()
                 self.k_data.append(k_data)
             self.nk_parameters = np.array(self.nk_parameters)
             self.nk_parameter = self.nk_parameters[0]
+
+    def load_n_data(self):
+        self.n_data = self._load_n_or_k_file(self.n_path)
+
+    def load_k_data(self):
+        self.k_data = self._load_n_or_k_file(self.k_path)
     def n(self,x):
         if isinstance(self.n_data, list):
             return np.interp(x, self.n_data[0][0], self.n_data[0][1])
