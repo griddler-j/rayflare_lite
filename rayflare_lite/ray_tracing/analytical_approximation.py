@@ -145,12 +145,11 @@ class Ray:
         # return A_mat_comp
 
 def get_ray_directions(ray_queue):
-    directions = []
-    for i, ray in enumerate(ray_queue):
-        if i == 0:
-            directions = ray.direction.reshape(1, -1)
-        else:
-            directions = np.vstack((directions, ray.direction.reshape(1, -1)))
+    if len(ray_queue) == 0:
+        return np.empty((0, 3))
+    directions = ray_queue[0].direction.reshape(1, -1)
+    for ray in ray_queue[1:]:
+        directions = np.vstack((directions, ray.direction.reshape(1, -1)))
     return directions
 
 
@@ -547,6 +546,8 @@ def RT_analytical(
         ray_queue = ray_queue[num_of_rays:]
 
     thetas_local_incidence = np.array(thetas_local_incidence)
+    if thetas_local_incidence.ndim == 1:
+        thetas_local_incidence = thetas_local_incidence.reshape(-1, 2)
 
     # now, compile the results
     scattered_ray_directions = get_ray_directions(scattered_rays)

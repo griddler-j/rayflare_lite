@@ -10,7 +10,6 @@ import cProfile as c_profile
 # pr = c_profile.Profile()
 import numpy as np
 import os
-from scipy.spatial import Delaunay
 from cmath import sin, cos, sqrt, acos, atan
 from math import atan2
 from random import random
@@ -1855,14 +1854,14 @@ class RTSurface:
         else:
             self.distribution = None
 
-        tri = Delaunay(Points[:, [0, 1]])
-        self.simplices = tri.simplices
+        # SciPy-free triangulation supports planar (4 points) and pyramid (5 points) surfaces only.
+        self.simplices = _triangulate_points_xy(Points)
         self.Points = Points
         self.original_Points = deepcopy(Points)
         self.height_ind = np.argmax(np.abs(self.Points[:,2]))
-        self.P_0s = Points[tri.simplices[:, 0]]
-        self.P_1s = Points[tri.simplices[:, 1]]
-        self.P_2s = Points[tri.simplices[:, 2]]
+        self.P_0s = Points[self.simplices[:, 0]]
+        self.P_1s = Points[self.simplices[:, 1]]
+        self.P_2s = Points[self.simplices[:, 2]]
         self.crossP = np.cross(self.P_1s - self.P_0s, self.P_2s - self.P_0s)
         self.N = self.crossP / np.linalg.norm(self.crossP, axis=1)[:, None]
         self.size = self.P_0s.shape[0]
@@ -2383,6 +2382,57 @@ def traverse(width, theta, alpha, x, y, I_i, positions, I_thresh, direction):
     )
 
     return DA, stop, I_back, theta
+
+
+def _order_polygon_indices(points_xy):
+    centroid = np.mean(points_xy, axis=0)
+    angles = np.arctan2(points_xy[:, 1] - centroid[1], points_xy[:, 0] - centroid[0])
+    return np.argsort(angles)
+
+
+def _orient_simplices(points_xyz, simplices, target_sign):
+    p0 = points_xyz[simplices[:, 0]]
+    p1 = points_xyz[simplices[:, 1]]
+    p2 = points_xyz[simplices[:, 2]]
+    cross = np.cross(p1 - p0, p2 - p0)
+    cross_z = np.sign(cross[:, 2])
+    flip = (cross_z != target_sign) & (cross_z != 0)
+    simplices[flip, 1], simplices[flip, 2] = simplices[flip, 2], simplices[flip, 1]
+    return simplices
+
+
+def _triangulate_points_xy(points_xyz):
+    count = points_xyz.shape[0]
+    if count == 4:
+        order = _order_polygon_indices(points_xyz[:, :2])
+        simplices = np.array(
+            [
+                [order[0], order[1], order[2]],
+                [order[0], order[2], order[3]],
+            ],
+            dtype=int,
+        )
+        target_sign = 1
+        return _orient_simplices(points_xyz, simplices, target_sign)
+
+    if count == 5:
+        apex = int(np.argmax(np.abs(points_xyz[:, 2])))
+        base = [i for i in range(count) if i != apex]
+        base_xy = points_xyz[base, :2]
+        order = _order_polygon_indices(base_xy)
+        base_ordered = [base[i] for i in order]
+        simplices = []
+        for i in range(len(base_ordered)):
+            j = (i + 1) % len(base_ordered)
+            simplices.append([apex, base_ordered[i], base_ordered[j]])
+        simplices = np.array(simplices, dtype=int)
+        target_sign = int(np.sign(points_xyz[apex, 2])) or 1
+        return _orient_simplices(points_xyz, simplices, target_sign)
+
+    raise ValueError(
+        "Unsupported surface point count without SciPy Delaunay. "
+        "Only planar (4 points) and pyramid (5 points) surfaces are supported."
+    )
 
 
 def decide_RT_Fresnel(n0, n1, theta, d, N, side, pol, rnd, wl=None, lookuptable=None):

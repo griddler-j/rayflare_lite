@@ -4,7 +4,6 @@
 # Journal of Open Source Software, 6(65), 3460. https://doi.org/10.21105/joss.03460
 
 from rayflare_lite.ray_tracing.rt import RTSurface
-from scipy.spatial import ConvexHull
 from copy import deepcopy
 import math
 import numpy as np

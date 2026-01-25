@@ -1,6 +1,4 @@
-# from scipy import interpolate as I
 import numpy as np
-from scipy.interpolate import make_interp_spline, splev
 from typing import Union
 
 
@@ -60,13 +58,10 @@ class interp1d(object):
         self.bounds_error = bounds_error
         self.fill_value = fill_value
 
-        if kind in ['zero', 'slinear', 'quadratic', 'cubic']:
-            order = {'nearest': 0, 'zero': 0, 'slinear': 1,
-                     'quadratic': 2, 'cubic': 3}[kind]
-            kind = 'spline'
-        elif isinstance(kind, int):
-            order = kind
-            kind = 'spline'
+        if kind in ['zero', 'slinear', 'quadratic', 'cubic'] or isinstance(kind, int):
+            raise NotImplementedError(
+                "spline interpolation requires SciPy; use kind='linear' or kind='nearest'"
+            )
         elif kind not in ('linear', 'nearest'):
             raise NotImplementedError("%s is unsupported: Use fitpack " \
                                       "routines for other types." % kind)
@@ -103,12 +98,10 @@ class interp1d(object):
         else:
             axes = list(range(y.ndim))
             del axes[self.axis]
-            axes.insert(0, self.axis)
+            axes.append(self.axis)
             oriented_y = y.transpose(axes)
-            minval = order + 1
-            len_y = oriented_y.shape[0]
-            self._call = self._call_spline
-            self._spline = make_interp_spline(x, oriented_y, k=order)
+            minval = 2
+            len_y = oriented_y.shape[-1]
 
         len_x = len(x)
         if len_x != len_y:
@@ -167,11 +160,6 @@ class interp1d(object):
 
         return y_new
 
-    def _call_spline(self, x_new: np.ndarray) -> np.ndarray:
-        x_new = np.asarray(x_new)
-        result = splev(x_new.ravel(), self._spline)
-        return result.reshape(x_new.shape + result.shape[1:])
-
     def __call__(self, x_new: np.ndarray) -> np.ndarray:
         """Find interpolated y_new = f(x_new).
 
@@ -214,15 +202,10 @@ class interp1d(object):
                 else:
                     y_new[...] = self.fill_value
             return np.asarray(y_new)
-        elif self._kind in ('linear', 'nearest'):
+        else:
             y_new[..., out_of_bounds] = self.fill_value
             axes = list(range(ny - nx))
             axes[self.axis:self.axis] = list(range(ny - nx, ny))
-            return y_new.transpose(axes)
-        else:
-            y_new[out_of_bounds] = self.fill_value
-            axes = list(range(nx, ny))
-            axes[self.axis:self.axis] = list(range(nx))
             return y_new.transpose(axes)
 
     def _check_bounds(self, x_new: np.ndarray) -> np.ndarray:
