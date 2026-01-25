@@ -574,8 +574,9 @@ def handle_block(lines, variables, f_out):
                 f_out.flush()
                 return "BYE"
             try:
-                exec(line_after_colon)
+                exec(line_after_colon, globals(), variables)
             except Exception as e:
+                print(f"-1:: Error: {e}\n")
                 f_out.write(f"-1:: Error: {e}\n")
                 f_out.flush()
                 return "FAILED"
