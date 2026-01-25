@@ -793,9 +793,10 @@ def matrix_multiplication(
                     for i1 in range(max(1,n_bulks)):
                         power += np.sum(vf_1[i1][-1], axis=1)
 
-                output_file = options["output_file"]
-                output_file.write(options["message"] + "- residue = " + str(round(np.max(power)*10000)/100) + "%\n")           
-                output_file.flush()  # Ensure the line is written to the file immediately
+                if "output_file" in options:
+                    output_file = options["output_file"]
+                    output_file.write(options["message"] + "- residue = " + str(round(np.max(power)*10000)/100) + "%\n")           
+                    output_file.flush()  # Ensure the line is written to the file immediately
                 # logger.info(f"After iteration {i2}: maximum power fraction remaining = {np.max(power)}")
                 i2 += 1
 
@@ -885,6 +886,9 @@ def matrix_multiplication(
             # bulk_absorbed_rear.append(total_vb_2[i]-dot_wl(D[i], total_vb_2[i]))
             bulk_absorbed_front.append(total_vf_1[i]*absorbed_fraction)
             bulk_absorbed_rear.append(total_vb_2[i]*absorbed_fraction)
+
+        print(RAT[0]["wl"])
+        assert(1==0)
 
         grand_results.append({'RAT':RAT, 'results_per_pass':results_per_pass, 'front_local_angles':front_local_angles, 'rear_local_angles':rear_local_angles, 'bulk_absorbed_front': bulk_absorbed_front, 'bulk_absorbed_rear': bulk_absorbed_rear, 'alphas':alphas, 'abscos': abscos})
 

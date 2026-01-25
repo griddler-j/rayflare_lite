@@ -160,9 +160,10 @@ def make_TMM_lookuptable(
         # takes 0.044s
         front_rear = {1:"front", -1:"rear"}
         for i1, side in enumerate(sides):
-            output_file = options['output_file']
-            output_file.write(options["message"] + " " + front_rear[side] + "\n")
-            output_file.flush()  # Ensure the line is written to the file immediately
+            if 'output_file' in options:
+                output_file = options['output_file']
+                output_file.write(options["message"] + " " + front_rear[side] + "\n")
+                output_file.flush()  # Ensure the line is written to the file immediately
             
             prof_layer_side = prof_layer_list[i1]
             R_loop = np.empty((num_rows, n_angles))

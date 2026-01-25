@@ -367,15 +367,17 @@ def RT(
                 # Parallel n_jobs = 1: 1.38s, 2: 0.76s, 4:0.43s, 8:0.46s
                 # multiprocessing not working, for some reason
                 # 2024-04-03 got it down to Parallel n_jobs = 1: 0.3218s, 2: 0.2006s, 4:0.1533s, 8:0.228s
-                output_file = options['output_file']
+                if 'output_file' in options:
+                    output_file = options['output_file']
                 allres = []
                 next_percentage = 0.0
                 for i1 in range(angles_in.shape[0]):
                     percentage = float(i1)/float(angles_in.shape[0])
-                    if percentage >= next_percentage:
-                        output_file.write(options["message"] + " " + front_or_rear + ": " + str(round(100*next_percentage)) + "%\n")
-                        output_file.flush()
-                        next_percentage += 0.1
+                    if 'output_file' in options:
+                        if percentage >= next_percentage:
+                            output_file.write(options["message"] + " " + front_or_rear + ": " + str(round(100*next_percentage)) + "%\n")
+                            output_file.flush()
+                            next_percentage += 0.1
                     allres.append(RT_analytical(angles_in[i1],
                         stacked_wavelengths,
                         n0,
