@@ -2424,7 +2424,8 @@ def _triangulate_points_xy(points_xyz):
             j = (i + 1) % len(base_ordered)
             simplices.append([apex, base_ordered[i], base_ordered[j]])
         simplices = np.array(simplices, dtype=int)
-        target_sign = int(np.sign(points_xyz[apex, 2])) or 1
+        # Match historical Delaunay winding: keep normals pointing upward.
+        target_sign = 1
         return _orient_simplices(points_xyz, simplices, target_sign)
 
     raise ValueError(
