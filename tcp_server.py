@@ -7,7 +7,7 @@ import sys
 import time
 from copy import deepcopy
 
-# # This is just to prove it can load the c++ backend stuff
+# # This is just to prove it can load the c++ backend stufff
 # from PV_Circuit_Model.circuit_model import IL, D1, D2, Dintrinsic_Si, Drev, R
 # from PV_Circuit_Model.device_analysis import Cell_
 # circuit_group = ( 
@@ -25,6 +25,9 @@ from rayflare_lite.textures.standard_rt_textures import planar_surface, regular_
 from rayflare_lite.structure import Interface, BulkLayer, Structure, Roughness, SimpleMaterial
 from rayflare_lite.matrix_formalism import calculate_RAT, process_structure
 from rayflare_lite.options import default_options
+from PV_Circuit_Model.utilities import Artifact
+from PV_Circuit_Model.circuit_model import Intrinsic_Si_diode, findElementType, PhotonCouplingDiode
+from PV_Circuit_Model.device import MultiJunctionCell, Cell, Module
 from PV_Circuit_Model.measurement import get_measurements
 from PV_Circuit_Model.data_fitting_tandem_cell import (
     analyze_solar_cell_measurements, generate_differentials
@@ -95,6 +98,39 @@ def _sigint(_sig, _frm):
 
 signal.signal(signal.SIGINT, _sigint)
 
+def extract_cell_parameters(cell):
+    intrinsic_Si_diodes = findElementType(Intrinsic_Si_diode)
+    intrinsic_Si_info = None
+    pc_diodes = findElementType(PhotonCouplingDiode)
+    pc_diode_J01 = 0
+    if len(intrinsic_Si_diodes)>0:
+        base_thickness = intrinsic_Si_diodes[0].base_thickness
+        base_type = intrinsic_Si_diodes[0].base_type
+        base_doping = intrinsic_Si_diodes[0].base_doping
+        intrinsic_Si_info = [base_thickness,base_type,base_doping]
+    if len(pc_diodes)>0:
+        pc_diode_J01 = pc_diodes[0].I0
+    return [cell.JL(), cell.J01(), cell.J02(), pc_diode_J01, intrinsic_Si_info, cell.specific_Rs(), cell.specific_shunt_cond()]
+
+def import_device(bson_file):
+    device = Artifact.load(bson_file)
+    info = {"type": type(device).__name__}
+    if isinstance(device,MultiJunctionCell):
+        info["Rs"] = device.specific_Rs_cond()
+        info["cells"] = []
+        for cell in device.cells:
+            info["cells"].append(extract_cell_parameters(cell))
+    elif isinstance(device,Cell):
+        info["cell"] = extract_cell_parameters(cell)
+    elif isinstance(device,Module):
+        info["interconnect_conds"] = []
+        for r in device.interconnect_resistors:
+            info["interconnect_conds"].append(r.cond)
+        info["cells"] = []
+        for cell in device.cells:
+            info["cells"].append(extract_cell_parameters(cell))
+    return info
+
 def analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_out, variables):
     measurements = get_measurements(measurements_folder)
     cell_model, _ = analyze_solar_cell_measurements(
@@ -145,6 +181,16 @@ def handle_pv_command(words, variables, f_out):
     command = words[0]
     if command == "QUIT":
         return "BYE"
+    if command == "IMPORTDEVICE":
+        if len(words) >= 2:
+            file = words[1]
+            try:
+                info = import_device(file)
+            except Error as e:
+                info = {"Error": e}
+            f_out.write(f"device_info:{info}\n")
+            f_out.flush()
+        return "FINISHED"
     if command == "MAKESTARTINGGUESS":
         if len(words) >= 6:
             measurements_folder = words[1]
