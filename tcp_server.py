@@ -240,6 +240,18 @@ def handle_pv_command(words, variables, f_out):
             f_out.write(f"device_info:{json.dumps(info)}\n")
             f_out.flush()
         return "FINISHED"
+    if command == "EXPORTDEVICE":
+        if len(words) >= 3:
+            file = words[1]
+            info_json = " ".join(words[2:])
+            try:
+                info = json.loads(info_json)
+                export_device(info, file)
+                f_out.write("device_exported:OK\n")
+            except Exception as e:
+                f_out.write(f"device_exported:{json.dumps({'Error': str(e)})}\n")
+            f_out.flush()
+        return "FINISHED"
     if command == "MAKESTARTINGGUESS":
         if len(words) >= 6:
             measurements_folder = words[1]
