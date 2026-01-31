@@ -27,7 +27,8 @@ from rayflare_lite.matrix_formalism import calculate_RAT, process_structure
 from rayflare_lite.options import default_options
 from PV_Circuit_Model.utilities import Artifact
 from PV_Circuit_Model.circuit_model import Intrinsic_Si_diode, findElementType, PhotonCouplingDiode
-from PV_Circuit_Model.device import MultiJunctionCell, Cell, Module
+from PV_Circuit_Model.device import MultiJunctionCell, Cell, Module, wafer_shape
+from PV_Circuit_Model.device_analysis import quick_module
 from PV_Circuit_Model.measurement import get_measurements
 from PV_Circuit_Model.data_fitting_tandem_cell import (
     analyze_solar_cell_measurements, generate_differentials
@@ -103,6 +104,8 @@ def extract_cell_parameters(cell):
     intrinsic_Si_info = None
     pc_diodes = findElementType(PhotonCouplingDiode)
     pc_diode_J01 = 0
+    wafer_format = cell.aux.get("wafer_format",None)
+    half_cut = cell.aux.get("half_cut",None)
     if len(intrinsic_Si_diodes)>0:
         base_thickness = intrinsic_Si_diodes[0].base_thickness
         base_type = intrinsic_Si_diodes[0].base_type
@@ -110,8 +113,27 @@ def extract_cell_parameters(cell):
         intrinsic_Si_info = [base_thickness,base_type,base_doping]
     if len(pc_diodes)>0:
         pc_diode_J01 = pc_diodes[0].I0
-    return [cell.JL(), cell.J01(), cell.J02(), pc_diode_J01, intrinsic_Si_info, cell.specific_Rs(), cell.specific_shunt_cond()]
+    return [cell.JL(), cell.J01(), cell.J02(), cell.specific_shunt_cond(), cell.specific_Rs(), 
+            cell.area, pc_diode_J01, intrinsic_Si_info, wafer_format, half_cut]
 
+def make_cell_from_parameters(cell_info):
+    wafer_format = cell_info[8]
+    half_cut = cell_info[9]
+    dict_ = wafer_shape(format = wafer_format, half_cut = half_cut)
+    intrinsic_Si_info = cell_info[7]
+    Si_intrinsic_limit = False
+    kwargs = {}
+    if intrinsic_Si_info:
+        Si_intrinsic_limit = True
+        kwargs["base_thickness"] = intrinsic_Si_info[0]
+        kwargs["base_type"] = intrinsic_Si_info[1]
+        kwargs["base_doping"] = intrinsic_Si_info[2]
+    return make_solar_cell(Jsc = cell_info[0], J01 = cell_info[1], J02 = cell_info[2],
+                           Rshunt = min(1e6,1/cell_info[3]), Rs = cell_info[4], area = cell_info[5],
+                           shape = dict_["shape"], J01_photon_coupling = cell_info[6],
+                           Si_intrinsic_limit = Si_intrinsic_limit, **kwargs)
+    
+# need module topology info
 def import_device(bson_file):
     device = Artifact.load(bson_file)
     info = {"type": type(device).__name__}
@@ -124,12 +146,39 @@ def import_device(bson_file):
         info["cell"] = extract_cell_parameters(device)
     elif isinstance(device,Module):
         info["interconnect_conds"] = []
+        info["num_strings"] = device.aux.get("num_strings",None)
+        info["num_cells_per_halfstring"] = device.aux.get("num_cells_per_halfstring",None)
+        info["butterfly"] = device.aux.get("butterfly",None)
+        info["wafer_format"] = device.aux.get("wafer_format",None)
         for r in device.interconnect_resistors:
             info["interconnect_conds"].append(r.cond)
         info["cells"] = []
         for cell in device.cells:
             info["cells"].append(extract_cell_parameters(cell))
     return info
+
+# need module topology info
+def export_device(info, bson_file):
+    type_ = info["type"]
+    if type_ == "Cell":
+        device = make_cell_from_parameters(info["cell"])
+    elif type_ == "Module":
+        device = quick_module(
+            wafer_format = info["wafer_format"],
+            num_strings = info["num_strings"],
+            num_cells_per_halfstring = info["num_cells_per_halfstring"],
+            half_cut = info["half_cut"],
+            butterfly = info["butterfly"]
+        )
+        for i, cell_info in enumerate(info["cells"]):
+            device.cells[i] = make_cell_from_parameters(cell_info)
+        device.set_interconnect_resistors(info["interconnect_conds"])
+    elif type_ == "MultiJunctionCell":
+        cells = []
+        for cell_info in info["cells"]:
+            cells.append(make_cell_from_parameters(cell_info))
+        device = MultiJunctionCell(subcells = cells, Rs = info["Rs"])
+    device.dump(bson_file)
 
 def analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_out, variables):
     measurements = get_measurements(measurements_folder)
