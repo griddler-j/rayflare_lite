@@ -121,7 +121,7 @@ def import_device(bson_file):
         for cell in device.cells:
             info["cells"].append(extract_cell_parameters(cell))
     elif isinstance(device,Cell):
-        info["cell"] = extract_cell_parameters(cell)
+        info["cell"] = extract_cell_parameters(device)
     elif isinstance(device,Module):
         info["interconnect_conds"] = []
         for r in device.interconnect_resistors:
@@ -186,9 +186,9 @@ def handle_pv_command(words, variables, f_out):
             file = words[1]
             try:
                 info = import_device(file)
-            except Error as e:
-                info = {"Error": e}
-            f_out.write(f"device_info:{info}\n")
+            except Exception as e:
+                info = {"Error": str(e)}
+            f_out.write(f"device_info:{json.dumps(info)}\n")
             f_out.flush()
         return "FINISHED"
     if command == "MAKESTARTINGGUESS":
