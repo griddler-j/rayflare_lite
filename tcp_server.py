@@ -104,22 +104,19 @@ def extract_cell_parameters(cell):
     intrinsic_Si_info = None
     pc_diodes = findElementType(PhotonCouplingDiode)
     pc_diode_J01 = 0
-    wafer_format = cell.aux.get("wafer_format",None)
-    half_cut = cell.aux.get("half_cut",None)
     if len(intrinsic_Si_diodes)>0:
         base_thickness = intrinsic_Si_diodes[0].base_thickness
-        base_type = intrinsic_Si_diodes[0].base_type
+        base_type = [1 if intrinsic_Si_diodes[0].base_type=="p" else 2]
         base_doping = intrinsic_Si_diodes[0].base_doping
         intrinsic_Si_info = [base_thickness,base_type,base_doping]
     if len(pc_diodes)>0:
         pc_diode_J01 = pc_diodes[0].I0
+    cell.set_Suns(1.0)
+    Eff = cell.get_Pmax()/cell.area
     return [cell.JL(), cell.J01(), cell.J02(), cell.specific_shunt_cond(), cell.specific_Rs(), 
-            cell.area, pc_diode_J01, intrinsic_Si_info, wafer_format, half_cut]
+            cell.area, pc_diode_J01, intrinsic_Si_info, cell.shape, Eff]
 
 def make_cell_from_parameters(cell_info):
-    wafer_format = cell_info[8]
-    half_cut = cell_info[9]
-    dict_ = wafer_shape(format = wafer_format, half_cut = half_cut)
     intrinsic_Si_info = cell_info[7]
     Si_intrinsic_limit = False
     kwargs = {}
@@ -130,7 +127,7 @@ def make_cell_from_parameters(cell_info):
         kwargs["base_doping"] = intrinsic_Si_info[2]
     return make_solar_cell(Jsc = cell_info[0], J01 = cell_info[1], J02 = cell_info[2],
                            Rshunt = min(1e6,1/cell_info[3]), Rs = cell_info[4], area = cell_info[5],
-                           shape = dict_["shape"], J01_photon_coupling = cell_info[6],
+                           shape = cell_info[8], J01_photon_coupling = cell_info[6],
                            Si_intrinsic_limit = Si_intrinsic_limit, **kwargs)
     
 # need module topology info
@@ -148,8 +145,10 @@ def import_device(bson_file):
         info["interconnect_conds"] = []
         info["num_strings"] = device.aux.get("num_strings",None)
         info["num_cells_per_halfstring"] = device.aux.get("num_cells_per_halfstring",None)
-        info["butterfly"] = device.aux.get("butterfly",None)
-        info["wafer_format"] = device.aux.get("wafer_format",None)
+        if len(device.cells)==info["num_strings"]*info["num_cells_per_halfstring"]:
+            info["butterfly"] = False
+        else:
+            info["butterfly"] = True
         for r in device.interconnect_resistors:
             info["interconnect_conds"].append(r.cond)
         info["cells"] = []
