@@ -139,6 +139,8 @@ def import_device(bson_file):
         info["cells"] = []
         for cell in device.cells:
             info["cells"].append(extract_cell_parameters(cell))
+        device.set_Suns(1)
+        info["Eff"] = device.get_Pmax()/device.area
     elif isinstance(device,Cell):
         info["cell"] = extract_cell_parameters(device)
     elif isinstance(device,Module):
@@ -160,6 +162,7 @@ def adjust_Rs(device,target_Eff):
     Rs_ = 1
     lower_ = 0
     upper_ = None
+    device.set_Suns(1)
     for _ in range(100):
         device.set_specific_Rs(Rs_)
         Eff = device.get_Pmax()/device.area
