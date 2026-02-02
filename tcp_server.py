@@ -123,7 +123,7 @@ def make_cell_from_parameters(cell_info):
     if intrinsic_Si_info:
         Si_intrinsic_limit = True
         kwargs["base_thickness"] = intrinsic_Si_info[0]
-        kwargs["base_type"] = intrinsic_Si_info[1]
+        kwargs["base_type"] = ["p" if intrinsic_Si_info[1]==1 else "n"]
         kwargs["base_doping"] = intrinsic_Si_info[2]
     return make_solar_cell(Jsc = cell_info[0], J01 = cell_info[1], J02 = cell_info[2],
                            Rshunt = min(1e6,1/cell_info[3]), Rs = cell_info[4], area = cell_info[5],
@@ -156,11 +156,33 @@ def import_device(bson_file):
             info["cells"].append(extract_cell_parameters(cell))
     return info
 
+def adjust_Rs(device,target_Eff):
+    Rs_ = 1
+    lower_ = 0
+    upper_ = None
+    for _ in range(100):
+        device.set_specific_Rs(Rs_)
+        Eff = device.get_Pmax()/device.area
+        if abs(Eff-target_Eff)<1e-4:
+            break
+        if target_Eff > Eff:
+            upper_ = Rs_
+            Rs_ = 0.5*(upper_+lower_)
+        else:
+            lower_ = Rs_
+            if upper_ is None:
+                Rs_ *= 2
+            else:
+                Rs_ = 0.5*(upper_+lower_)
+        
 # need module topology info
 def export_device(info, bson_file):
     type_ = info["type"]
     if type_ == "Cell":
+        info["cell"][4]  = 1
+        target_Eff = info["cell"][9]
         device = make_cell_from_parameters(info["cell"])
+        adjust_Rs(device,target_Eff)
     elif type_ == "Module":
         device = quick_module(
             wafer_format = info["wafer_format"],
@@ -176,7 +198,10 @@ def export_device(info, bson_file):
         cells = []
         for cell_info in info["cells"]:
             cells.append(make_cell_from_parameters(cell_info))
+            target_Eff = cell_info[9]
+        info["Rs"] = 1
         device = MultiJunctionCell(subcells = cells, Rs = info["Rs"])
+        adjust_Rs(device,target_Eff)
     device.dump(bson_file)
 
 def analyze_solar_cell_measurements_wrapper(measurements_folder, sample_info, f_out, variables):
