@@ -1,4 +1,6 @@
+import csv
 import json
+import os
 import shlex
 import signal
 import socket
@@ -26,9 +28,17 @@ from rayflare_lite.structure import Interface, BulkLayer, Structure, Roughness, 
 from rayflare_lite.matrix_formalism import calculate_RAT, process_structure
 from rayflare_lite.options import default_options
 from PV_Circuit_Model.utilities import Artifact
-from PV_Circuit_Model.circuit_model import Intrinsic_Si_diode, findElementType, PhotonCouplingDiode
-from PV_Circuit_Model.device import MultiJunctionCell, Cell, Module, wafer_shape
-from PV_Circuit_Model.device_analysis import quick_module
+from PV_Circuit_Model.circuit_model import (
+    Intrinsic_Si_diode, findElementType, PhotonCouplingDiode, Resistor,
+    CircuitGroup, circuit_deepcopy,
+)
+from PV_Circuit_Model.device import (
+    MultiJunctionCell, Cell, Module, wafer_shape,
+    make_solar_cell, make_module,
+)
+from PV_Circuit_Model.device_analysis import (
+    quick_module, get_Pmax, get_Voc, get_Isc, get_FF,
+)
 from PV_Circuit_Model.measurement import get_measurements
 from PV_Circuit_Model.data_fitting_tandem_cell import (
     analyze_solar_cell_measurements, generate_differentials
@@ -131,7 +141,7 @@ def make_cell_from_parameters(cell_info):
                            Si_intrinsic_limit = Si_intrinsic_limit, **kwargs)
     
 # need module topology info
-def import_device(bson_file):
+def import_device(bson_file): # means pv-circuit-model --> Griddler
     device = Artifact.load(bson_file)
     info = {"type": type(device).__name__}
     if isinstance(device,MultiJunctionCell):
@@ -144,18 +154,45 @@ def import_device(bson_file):
     elif isinstance(device,Cell):
         info["cell"] = extract_cell_parameters(device)
     elif isinstance(device,Module):
-        info["interconnect_conds"] = []
-        info["num_strings"] = device.aux.get("num_strings",None)
-        info["num_cells_per_halfstring"] = device.aux.get("num_cells_per_halfstring",None)
-        if len(device.cells)==info["num_strings"]*info["num_cells_per_halfstring"]:
-            info["butterfly"] = False
-        else:
-            info["butterfly"] = True
-        for r in device.interconnect_resistors:
-            info["interconnect_conds"].append(r.cond)
-        info["cells"] = []
-        for cell in device.cells:
-            info["cells"].append(extract_cell_parameters(cell))
+        # module.aux["layout"] = {"num_strings": num_strings, "num_cells_per_halfstring": num_cells_per_halfstring, "butterfly": butterfly}
+        if "layout" in device.aux:
+            info["interconnect_conds"] = []
+            info["num_strings"] = device.aux["layout"].get("num_strings",None)
+            info["num_cells_per_halfstring"] = device.aux["layout"].get("num_cells_per_halfstring",None)
+            info["butterfly"] = device.aux["layout"].get("butterfly",None)
+            for r in device.interconnect_resistors:
+                info["interconnect_conds"].append(r.cond)
+            info["cells"] = []
+            for cell in device.cells:
+                info["cells"].append(extract_cell_parameters(cell))
+            info["Pmax"] = device.get_Pmax()
+            # how to do in Module?  need to replicate that section's IV
+            info["section_EL_I"] = []
+            info["section_R"] = []
+            sections = []
+            for part in device.parts:
+                if info["butterfly"]==False:
+                    sections.append(part)
+                else:
+                    for subpart in part.parts:
+                        sections.append(subpart)
+            device.set_Suns(1.0)
+            Isc = device.get_Isc()
+            # do EL
+            device.set_Suns(0)
+            device.set_operating_point(I=Isc)
+            info["EL_I_drive"] = Isc
+            for section in sections:
+                info["section_EL_I"].append(section.operating_point[1])
+                section_R = 0
+                Rs = section.findElementType(Resistor, Cell)
+                cells = section.findElementType(Cell)
+                for R in Rs:
+                    section_R += 1/R.cond
+                for cell in cells:
+                    section_R += cell.Rs()
+                info["section_R"].append(section_R)    
+
     return info
 
 def adjust_Rs(device,target_Eff):
@@ -344,9 +381,265 @@ def handle_pv_command(words, variables, f_out):
                     return "FAILED"
             # generate_differentials_wrapper(variables["measurements"], variables["cell_model"], f_out)
         return "FINISHED"
+
+    # ------------------------------------------------------------------
+    # PVCM_* commands — used by the Griddler MCP server (griddler_mcp).
+    # Each command writes a single `PVCM_RESULT:{json}\n` line and
+    # returns "FINISHED" on success or "FAILED" on error. Devices live
+    # in variables["pvcm_devices"], a name -> PV_CM object dict.
+    # ------------------------------------------------------------------
+    if command.startswith("PVCM_"):
+        return handle_pvcm_command(words, variables, f_out)
+
     f_out.write(f"Unknown command: {command}\n")
     f_out.flush()
     return "FINISHED"
+
+
+def _pvcm_session(variables):
+    if "pvcm_devices" not in variables:
+        variables["pvcm_devices"] = {}
+    return variables["pvcm_devices"]
+
+
+def _pvcm_reply(f_out, payload):
+    f_out.write("PVCM_RESULT:" + json.dumps(payload) + "\n")
+    f_out.flush()
+
+
+def _pvcm_error(f_out, msg):
+    f_out.write("PVCM_RESULT:" + json.dumps({"ok": False, "error": str(msg)}) + "\n")
+    f_out.flush()
+
+
+def _pvcm_get(devices, name):
+    if name not in devices:
+        raise KeyError(
+            "No device named '%s'. Existing: %s" % (name, sorted(devices.keys()))
+        )
+    return devices[name]
+
+
+def _pvcm_metrics(device):
+    return {
+        "Pmax_W": float(get_Pmax(device)),
+        "Voc_V": float(get_Voc(device)),
+        "Isc_A": float(get_Isc(device)),
+        "FF_pct": float(get_FF(device)) * 100.0,
+    }
+
+
+def _parse_bool(s):
+    return str(s).strip().lower() in ("1", "true", "yes", "on", "t", "y")
+
+
+def handle_pvcm_command(words, variables, f_out):
+    command = words[0]
+    devices = _pvcm_session(variables)
+    try:
+        if command == "PVCM_LOAD":
+            # PVCM_LOAD <name> <filepath>
+            name = words[1]
+            filepath = words[2]
+            device = Artifact.load(filepath)
+            devices[name] = device
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name,
+                "type": type(device).__name__, "filepath": filepath,
+            })
+            return "FINISHED"
+
+        if command == "PVCM_SAVE":
+            # PVCM_SAVE <name> <filepath>
+            name = words[1]
+            filepath = words[2]
+            device = _pvcm_get(devices, name)
+            device.dump(filepath)
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "filepath": filepath,
+                "size": os.path.getsize(filepath),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_LIST":
+            _pvcm_reply(f_out, {
+                "devices": [
+                    {"name": n, "type": type(d).__name__}
+                    for n, d in devices.items()
+                ]
+            })
+            return "FINISHED"
+
+        if command == "PVCM_CLEAR_DEVICE":
+            # PVCM_CLEAR_DEVICE <name>
+            name = words[1]
+            existed = devices.pop(name, None) is not None
+            _pvcm_reply(f_out, {"ok": existed, "name": name})
+            return "FINISHED"
+
+        if command == "PVCM_CLEAR_SESSION":
+            n = len(devices)
+            devices.clear()
+            _pvcm_reply(f_out, {"ok": True, "removed": n})
+            return "FINISHED"
+
+        if command == "PVCM_MAKE_SOLAR_CELL":
+            # PVCM_MAKE_SOLAR_CELL <name> <Jsc> <J01> <J02> <Rshunt> <Rs> <area>
+            name = words[1]
+            Jsc = float(words[2])
+            J01 = float(words[3])
+            J02 = float(words[4])
+            Rshunt = float(words[5])
+            Rs = float(words[6])
+            area = float(words[7])
+            cell = make_solar_cell(
+                Jsc=Jsc, J01=J01, J02=J02, Rshunt=Rshunt, Rs=Rs, area=area
+            )
+            devices[name] = cell
+            _pvcm_reply(f_out, {"ok": True, "name": name, "type": "Cell"})
+            return "FINISHED"
+
+        if command == "PVCM_MAKE_MODULE":
+            # PVCM_MAKE_MODULE <name> <cell_name> <num_strings>
+            #                  <num_cells_per_halfstring> <halfstring_resistor>
+            #                  <butterfly> <half_cut>
+            name = words[1]
+            cell_name = words[2]
+            num_strings = int(words[3])
+            num_cells_per_halfstring = int(words[4])
+            halfstring_resistor = float(words[5])
+            butterfly = _parse_bool(words[6])
+            half_cut = _parse_bool(words[7])
+            template = _pvcm_get(devices, cell_name)
+            n_total = num_strings * num_cells_per_halfstring * (2 if butterfly else 1)
+            cells = [circuit_deepcopy(template) for _ in range(n_total)]
+            module = make_module(
+                cells,
+                num_strings=num_strings,
+                num_cells_per_halfstring=num_cells_per_halfstring,
+                halfstring_resistor=halfstring_resistor,
+                butterfly=butterfly,
+            )
+            module.aux["layout"] = {
+                "num_strings": num_strings,
+                "num_cells_per_halfstring": num_cells_per_halfstring,
+                "butterfly": butterfly,
+                "half_cut": half_cut,
+            }
+            devices[name] = module
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "Module", "num_cells": n_total,
+            })
+            return "FINISHED"
+
+        if command == "PVCM_BUILD_SERIES":
+            # PVCM_BUILD_SERIES <name> <member1> <member2> ...
+            name = words[1]
+            member_names = words[2:]
+            members = [circuit_deepcopy(_pvcm_get(devices, n)) for n in member_names]
+            group = CircuitGroup(members, "series")
+            devices[name] = group
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "CircuitGroup",
+                "connection": "series", "n_members": len(members),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_BUILD_PARALLEL":
+            # PVCM_BUILD_PARALLEL <name> <member1> <member2> ...
+            name = words[1]
+            member_names = words[2:]
+            members = [circuit_deepcopy(_pvcm_get(devices, n)) for n in member_names]
+            group = CircuitGroup(members, "parallel")
+            devices[name] = group
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "CircuitGroup",
+                "connection": "parallel", "n_members": len(members),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_SET_INTERCONNECT":
+            # PVCM_SET_INTERCONNECT <name> <c1> <c2> ...
+            name = words[1]
+            conductances = [float(w) for w in words[2:]]
+            device = _pvcm_get(devices, name)
+            device.set_interconnect_resistors(conductances)
+            positives = [c for c in conductances if c > 0]
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "n_resistors": len(conductances),
+                "min_R_ohm": (min(1.0 / c for c in positives) if positives else None),
+                "max_R_ohm": (max(1.0 / c for c in positives) if positives else None),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_SIMULATE_AT":
+            # PVCM_SIMULATE_AT <name> <suns> <temperature_C>
+            name = words[1]
+            suns = float(words[2])
+            temperature_C = float(words[3])
+            device = _pvcm_get(devices, name)
+            device.set_Suns(suns)
+            device.set_temperature(temperature_C)
+            device.build_IV()
+            m = _pvcm_metrics(device)
+            m["ok"] = True
+            m["name"] = name
+            m["suns"] = suns
+            m["temperature_C"] = temperature_C
+            _pvcm_reply(f_out, m)
+            return "FINISHED"
+
+        if command == "PVCM_GET_METRICS":
+            # PVCM_GET_METRICS <name>
+            name = words[1]
+            device = _pvcm_get(devices, name)
+            m = _pvcm_metrics(device)
+            m["ok"] = True
+            m["name"] = name
+            _pvcm_reply(f_out, m)
+            return "FINISHED"
+
+        if command == "PVCM_SIMULATE_ANNUAL":
+            # PVCM_SIMULATE_ANNUAL <name> <conditions_csv> <sample_every>
+            # CSV columns must include poa_global (W/m2) and cell_temp (C).
+            # Stdlib csv only — combo venv has no pandas.
+            name = words[1]
+            conditions_csv = words[2]
+            sample_every = int(words[3]) if len(words) > 3 else 24
+            device = _pvcm_get(devices, name)
+            with open(conditions_csv, "r", newline="") as fh:
+                reader = csv.DictReader(fh)
+                if "poa_global" not in reader.fieldnames or "cell_temp" not in reader.fieldnames:
+                    _pvcm_error(f_out, "CSV must have poa_global, cell_temp columns")
+                    return "FAILED"
+                daytime = [
+                    row for row in reader if float(row["poa_global"]) > 10
+                ]
+            step = max(1, sample_every)
+            sample = daytime[::step]
+            powers = []
+            for row in sample:
+                device.set_Suns(float(row["poa_global"]) / 1000.0)
+                device.set_temperature(float(row["cell_temp"]))
+                device.build_IV()
+                powers.append(float(get_Pmax(device)))
+            annual_Wh = sum(powers) * step
+            _pvcm_reply(f_out, {
+                "ok": True,
+                "name": name,
+                "annual_kWh": annual_Wh / 1000.0,
+                "n_sampled_points": len(sample),
+                "n_total_daytime_hours": len(daytime),
+                "sample_every": step,
+                "avg_daytime_power_W": (sum(powers) / len(powers)) if powers else 0.0,
+            })
+            return "FINISHED"
+
+        _pvcm_error(f_out, "Unknown PVCM command: " + command)
+        return "FAILED"
+    except Exception as e:
+        _pvcm_error(f_out, e)
+        return "FAILED"
 
 # z_front is in um
 def bulk_profile(results, z_front, out_path):
