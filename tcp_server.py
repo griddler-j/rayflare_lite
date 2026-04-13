@@ -29,7 +29,7 @@ from rayflare_lite.matrix_formalism import calculate_RAT, process_structure
 from rayflare_lite.options import default_options
 from PV_Circuit_Model.utilities import Artifact
 from PV_Circuit_Model.circuit_model import (
-    Intrinsic_Si_diode, findElementType, PhotonCouplingDiode, Resistor,
+    Intrinsic_Si_diode, PhotonCouplingDiode, Resistor,
     CircuitGroup, circuit_deepcopy,
 )
 from PV_Circuit_Model.device import (
@@ -111,9 +111,9 @@ def _sigint(_sig, _frm):
 signal.signal(signal.SIGINT, _sigint)
 
 def extract_cell_parameters(cell):
-    intrinsic_Si_diodes = findElementType(Intrinsic_Si_diode)
+    intrinsic_Si_diodes = cell.findElementType(Intrinsic_Si_diode)
     intrinsic_Si_info = None
-    pc_diodes = findElementType(PhotonCouplingDiode)
+    pc_diodes = cell.findElementType(PhotonCouplingDiode)
     pc_diode_J01 = 0
     if len(intrinsic_Si_diodes)>0:
         base_thickness = intrinsic_Si_diodes[0].base_thickness
@@ -1203,11 +1203,7 @@ def main():
         s.settimeout(1.0)
 
         try:
-            accept_deadline = time.time() + 60
             while not SHOULD_EXIT:
-                if time.time() >= accept_deadline:
-                    print("No connection within 60 seconds. Exiting.")
-                    return
                 try:
                     conn, addr = s.accept()
                 except socket.timeout:
@@ -1221,8 +1217,8 @@ def main():
                     while not SHOULD_EXIT:
                         block = read_block_sock(conn)
                         if block is None:
-                            print("Connection closed. Exiting.")
-                            return
+                            print("Connection closed. Waiting for next connection...")
+                            break
                         result = handle_block(block, variables, f_out)
                         if result == "BYE":
                             try:
@@ -1235,8 +1231,8 @@ def main():
                             f_out.write(result + "\n")
                             f_out.flush()
                         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
-                            print("Connection closed. Exiting.")
-                            return
+                            print("Connection closed. Waiting for next connection...")
+                            break
         except KeyboardInterrupt:
             pass
 
