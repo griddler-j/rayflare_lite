@@ -38,7 +38,7 @@ from PV_Circuit_Model.device import (
 )
 from PV_Circuit_Model.device_analysis import (
     quick_solar_cell, quick_module, quick_butterfly_module,
-    quick_tandem_cell, get_Pmax, get_Voc, get_Isc, get_FF,
+    quick_tandem_cell, get_Pmax, get_Voc, get_Isc, get_FF, get_Eff,
 )
 from PV_Circuit_Model.measurement import get_measurements
 from PV_Circuit_Model.data_fitting_tandem_cell import (
@@ -123,9 +123,12 @@ def extract_cell_parameters(cell):
     if len(pc_diodes)>0:
         pc_diode_J01 = pc_diodes[0].I0
     cell.set_Suns(1.0)
-    Eff = cell.get_Pmax()/cell.area
-    return [cell.JL(), cell.J01(), cell.J02(), cell.specific_shunt_cond(), cell.specific_Rs(), 
-            cell.area, pc_diode_J01, intrinsic_Si_info, cell.shape, Eff]
+    Eff = get_Eff(cell)
+    Voc = get_Voc(cell)
+    Jsc = get_Isc(cell)/cell.area
+    FF = get_FF(cell)
+    return [cell.JL(), cell.J01(), cell.J02(), cell.specific_shunt_cond(), cell.specific_Rs(),
+            cell.area, pc_diode_J01, intrinsic_Si_info, cell.shape, Eff, Voc, Jsc, FF]
 
 def make_cell_from_parameters(cell_info):
     intrinsic_Si_info = cell_info[7]
@@ -151,7 +154,7 @@ def import_device(bson_file): # means pv-circuit-model --> Griddler
         for cell in device.cells:
             info["cells"].append(extract_cell_parameters(cell))
         device.set_Suns(1)
-        info["Eff"] = device.get_Pmax()/device.area
+        info["Eff"] = get_Eff(device)
     elif isinstance(device,Cell):
         info["cell"] = extract_cell_parameters(device)
     elif isinstance(device,Module):
