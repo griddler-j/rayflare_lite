@@ -37,7 +37,8 @@ from PV_Circuit_Model.device import (
     make_solar_cell, make_module,
 )
 from PV_Circuit_Model.device_analysis import (
-    quick_module, get_Pmax, get_Voc, get_Isc, get_FF,
+    quick_solar_cell, quick_module, quick_butterfly_module,
+    quick_tandem_cell, get_Pmax, get_Voc, get_Isc, get_FF,
 )
 from PV_Circuit_Model.measurement import get_measurements
 from PV_Circuit_Model.data_fitting_tandem_cell import (
@@ -529,6 +530,125 @@ def handle_pvcm_command(words, variables, f_out):
             devices[name] = module
             _pvcm_reply(f_out, {
                 "ok": True, "name": name, "type": "Module", "num_cells": n_total,
+            })
+            return "FINISHED"
+
+        if command == "PVCM_QUICK_SOLAR_CELL":
+            # PVCM_QUICK_SOLAR_CELL <name> <Jsc> <Voc> <FF> <Rs> <Rshunt>
+            #                       <wafer_format> <half_cut>
+            name = words[1]
+            Jsc = float(words[2])
+            Voc = float(words[3])
+            FF = float(words[4])
+            Rs = float(words[5])
+            Rshunt = float(words[6])
+            wafer_format = words[7] if len(words) > 7 else "M10"
+            half_cut = _parse_bool(words[8]) if len(words) > 8 else True
+            cell = quick_solar_cell(
+                Jsc=Jsc, Voc=Voc, FF=FF, Rs=Rs, Rshunt=Rshunt,
+                wafer_format=wafer_format, half_cut=half_cut,
+            )
+            devices[name] = cell
+            cell.set_Suns(1.0)
+            cell.build_IV()
+            cell.get_Pmax()
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "Cell",
+                "Pmax": cell.get_Pmax(), "Voc": cell.get_Voc(),
+                "Isc": cell.get_Isc(), "FF": cell.get_FF(),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_QUICK_MODULE":
+            # PVCM_QUICK_MODULE <name> <Isc> <Voc> <FF> <Pmax>
+            #                   <wafer_format> <num_strings>
+            #                   <num_cells_per_halfstring> <half_cut> <butterfly>
+            # Use 0 for Isc/Voc/FF/Pmax to leave unspecified.
+            name = words[1]
+            Isc = float(words[2]) or None
+            Voc = float(words[3]) or None
+            FF = float(words[4]) or None
+            Pmax = float(words[5]) or None
+            wafer_format = words[6] if len(words) > 6 else "M10"
+            num_strings = int(words[7]) if len(words) > 7 else 3
+            num_cells_per_halfstring = int(words[8]) if len(words) > 8 else 24
+            half_cut = _parse_bool(words[9]) if len(words) > 9 else False
+            butterfly = _parse_bool(words[10]) if len(words) > 10 else False
+            module = quick_module(
+                Isc=Isc, Voc=Voc, FF=FF, Pmax=Pmax,
+                wafer_format=wafer_format, num_strings=num_strings,
+                num_cells_per_halfstring=num_cells_per_halfstring,
+                half_cut=half_cut, butterfly=butterfly,
+            )
+            devices[name] = module
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "Module",
+                "Pmax": module.get_Pmax(), "Voc": module.get_Voc(),
+                "Isc": module.get_Isc(), "FF": module.get_FF(),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_QUICK_BUTTERFLY_MODULE":
+            # PVCM_QUICK_BUTTERFLY_MODULE <name> <Isc> <Voc> <FF> <Pmax>
+            #                             <wafer_format> <num_strings>
+            #                             <num_cells_per_halfstring> <half_cut>
+            name = words[1]
+            Isc = float(words[2]) or None
+            Voc = float(words[3]) or None
+            FF = float(words[4]) or None
+            Pmax = float(words[5]) or None
+            wafer_format = words[6] if len(words) > 6 else "M10"
+            num_strings = int(words[7]) if len(words) > 7 else 3
+            num_cells_per_halfstring = int(words[8]) if len(words) > 8 else 24
+            half_cut = _parse_bool(words[9]) if len(words) > 9 else True
+            module = quick_butterfly_module(
+                Isc=Isc, Voc=Voc, FF=FF, Pmax=Pmax,
+                wafer_format=wafer_format, num_strings=num_strings,
+                num_cells_per_halfstring=num_cells_per_halfstring,
+                half_cut=half_cut,
+            )
+            devices[name] = module
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "Module", "layout": "butterfly",
+                "Pmax": module.get_Pmax(), "Voc": module.get_Voc(),
+                "Isc": module.get_Isc(), "FF": module.get_FF(),
+            })
+            return "FINISHED"
+
+        if command == "PVCM_QUICK_TANDEM_CELL":
+            # PVCM_QUICK_TANDEM_CELL <name> <n_junctions>
+            #   <Jsc1> <Voc1> <FF1> <Rs1> <Rshunt1> <thickness1>
+            #   <Jsc2> <Voc2> <FF2> <Rs2> <Rshunt2> <thickness2>
+            #   ...
+            #   <wafer_format> <half_cut>
+            name = words[1]
+            n_junctions = int(words[2])
+            idx = 3
+            Jscs, Vocs, FFs, Rss, Rshunts, thicknesses = [], [], [], [], [], []
+            for _ in range(n_junctions):
+                Jscs.append(float(words[idx]))
+                Vocs.append(float(words[idx + 1]))
+                FFs.append(float(words[idx + 2]))
+                Rss.append(float(words[idx + 3]))
+                Rshunts.append(float(words[idx + 4]))
+                thicknesses.append(float(words[idx + 5]))
+                idx += 6
+            wafer_format = words[idx] if len(words) > idx else "M10"
+            half_cut = _parse_bool(words[idx + 1]) if len(words) > idx + 1 else True
+            cell = quick_tandem_cell(
+                Jscs=Jscs, Vocs=Vocs, FFs=FFs, Rss=Rss,
+                Rshunts=Rshunts, thicknesses=thicknesses,
+                wafer_format=wafer_format, half_cut=half_cut,
+            )
+            devices[name] = cell
+            cell.set_Suns(1.0)
+            cell.build_IV()
+            cell.get_Pmax()
+            _pvcm_reply(f_out, {
+                "ok": True, "name": name, "type": "MultiJunctionCell",
+                "n_junctions": n_junctions,
+                "Pmax": cell.get_Pmax(), "Voc": cell.get_Voc(),
+                "Isc": cell.get_Isc(), "FF": cell.get_FF(),
             })
             return "FINISHED"
 
