@@ -127,7 +127,14 @@ def extract_cell_parameters(cell):
     Voc = get_Voc(cell)
     Jsc = get_Isc(cell)/cell.area
     FF = get_FF(cell)
-    return [cell.JL(), cell.J01(), cell.J02(), cell.specific_shunt_cond(), cell.specific_Rs(),
+    J01 = cell.J01()
+    J02 = cell.J02()
+    # When cell uses intrinsic Si model, J01/J02 are 0 — derive effective J01 from IV
+    if J01 == 0 and intrinsic_Si_info is not None:
+        kT = 0.02585  # 25°C
+        if Voc > 0 and cell.JL() > 0:
+            J01 = cell.JL() / (np.exp(Voc / kT) - 1)
+    return [cell.JL(), J01, J02, cell.specific_shunt_cond(), cell.specific_Rs(),
             cell.area, pc_diode_J01, intrinsic_Si_info, cell.shape, Eff, Voc, Jsc, FF]
 
 def make_cell_from_parameters(cell_info):
@@ -139,10 +146,29 @@ def make_cell_from_parameters(cell_info):
         kwargs["base_thickness"] = intrinsic_Si_info[0]
         kwargs["base_type"] = ["p" if intrinsic_Si_info[1]==1 else "n"]
         kwargs["base_doping"] = intrinsic_Si_info[2]
+    # Convert shape from list of lists to numpy array (JSON gives lists)
+    shape = cell_info[8] if len(cell_info) > 8 else None
+    if isinstance(shape, list) and len(shape) > 0:
+        shape = np.array(shape)
+    elif not isinstance(shape, np.ndarray):
+        shape = None
     return make_solar_cell(Jsc = cell_info[0], J01 = cell_info[1], J02 = cell_info[2],
-                           Rshunt = min(1e6,1/cell_info[3]), Rs = cell_info[4], area = cell_info[5],
-                           shape = cell_info[8], J01_photon_coupling = cell_info[6],
+                           Rshunt = min(1e6, 1/cell_info[3]) if cell_info[3] > 0 else 1e6,
+                           Rs = cell_info[4], area = cell_info[5],
+                           shape = shape, J01_photon_coupling = cell_info[6],
                            Si_intrinsic_limit = Si_intrinsic_limit, **kwargs)
+
+def _replace_cells_in_tree(node, new_cells, idx=None):
+    """Replace Cell objects in the circuit tree with new_cells in order."""
+    if idx is None:
+        idx = [0]
+    for i, child in enumerate(node.subgroups):
+        if isinstance(child, Cell):
+            if idx[0] < len(new_cells):
+                node.subgroups[i] = new_cells[idx[0]]
+                idx[0] += 1
+        elif hasattr(child, 'subgroups'):
+            _replace_cells_in_tree(child, new_cells, idx)
     
 # need module topology info
 def import_device(bson_file): # means pv-circuit-model --> Griddler
@@ -164,6 +190,7 @@ def import_device(bson_file): # means pv-circuit-model --> Griddler
             info["num_strings"] = device.aux["layout"].get("num_strings",None)
             info["num_cells_per_halfstring"] = device.aux["layout"].get("num_cells_per_halfstring",None)
             info["butterfly"] = device.aux["layout"].get("butterfly",None)
+            info["half_cut"] = device.aux["layout"].get("half_cut",None)
             for r in device.interconnect_resistors:
                 info["interconnect_conds"].append(r.cond)
             info["cells"] = []
@@ -179,7 +206,8 @@ def import_device(bson_file): # means pv-circuit-model --> Griddler
                     sections.append(part)
                 else:
                     for subpart in part.parts:
-                        sections.append(subpart)
+                        if hasattr(subpart, 'findElementType'):
+                            sections.append(subpart)
             device.set_Suns(1.0)
             Isc = device.get_Isc()
             # do EL
@@ -228,21 +256,43 @@ def export_device(info, bson_file):
         device = make_cell_from_parameters(info["cell"])
         adjust_Rs(device,target_Eff)
     elif type_ == "Module":
+        # Estimate module Isc/Voc from cell parameters for correct topology
+        ncph = info["num_cells_per_halfstring"]
+        ns = info["num_strings"]
+        first_cell = info["cells"][0] if info.get("cells") else None
+        if first_cell:
+            cell_Jsc = first_cell[0]  # A/cm2
+            cell_area = first_cell[5]  # cm2
+            est_Isc = cell_Jsc * cell_area * ns
+            est_Voc = 0.7 * ncph  # rough estimate
+        else:
+            est_Isc = 10.0
+            est_Voc = 0.7 * ncph
+        # Don't pass wafer_format — it overrides cell area on deserialization
         device = quick_module(
-            wafer_format = info["wafer_format"],
-            num_strings = info["num_strings"],
-            num_cells_per_halfstring = info["num_cells_per_halfstring"],
-            half_cut = info["half_cut"],
-            butterfly = info["butterfly"]
+            Isc = est_Isc,
+            Voc = est_Voc,
+            num_strings = ns,
+            num_cells_per_halfstring = ncph,
+            half_cut = info.get("half_cut", False),
+            butterfly = info.get("butterfly", False)
         )
-        for i, cell_info in enumerate(info["cells"]):
-            device.cells[i] = make_cell_from_parameters(cell_info)
+        # MATLAB's num_strings is derived from Isc ratio (= parallel paths).
+        # make_module connects strings in series (standard PV convention), but
+        # the Griddler Module topology has parallel strings. Fix the connection.
+        if ns > 1:
+            device.connection = "parallel"
+        # Replace cells in the tree (not just the .cells list which is a snapshot)
+        new_cells = [make_cell_from_parameters(ci) for ci in info["cells"]]
+        _replace_cells_in_tree(device, new_cells)
+        device.cells = device.findElementType(Cell)  # refresh the list
         device.set_interconnect_resistors(info["interconnect_conds"])
     elif type_ == "MultiJunctionCell":
         cells = []
         for cell_info in info["cells"]:
             cells.append(make_cell_from_parameters(cell_info))
-            target_Eff = cell_info[9]
+        # Use combined tandem Eff for interface Rs fitting (not individual cell Eff)
+        target_Eff = info.get("tandem_Eff", info["cells"][-1][9])
         info["Rs"] = 1
         device = MultiJunctionCell(subcells = cells, Rs = info["Rs"])
         adjust_Rs(device,target_Eff)
@@ -305,7 +355,11 @@ def handle_pv_command(words, variables, f_out):
                 info = import_device(file)
             except Exception as e:
                 info = {"Error": str(e)}
-            f_out.write(f"device_info:{json.dumps(info)}\n")
+            try:
+                info_json = json.dumps(info, default=lambda o: o.tolist() if hasattr(o, 'tolist') else float(o))
+            except Exception as e:
+                info_json = json.dumps({"Error": f"JSON serialization failed: {e}"})
+            f_out.write(f"device_info:{info_json}\n")
             f_out.flush()
         return "FINISHED"
     if command == "EXPORTDEVICE":
@@ -1176,7 +1230,31 @@ def handle_block(lines, variables, f_out):
             if not _safe_write(line_before_colon + ":: executed\n"):
                 return "BYE"
             continue
-        words = shlex.split(line)
+        # For EXPORTDEVICE/IMPORTDEVICE, parse manually to preserve JSON quotes
+        if line.startswith("EXPORTDEVICE") or line.startswith("IMPORTDEVICE"):
+            parts = line.split(None, 1)
+            command = parts[0]
+            rest = parts[1] if len(parts) > 1 else ""
+            if rest.startswith('"'):
+                end_quote = rest.find('"', 1)
+                if end_quote > 0:
+                    filename = rest[1:end_quote]
+                    json_part = rest[end_quote+1:].strip()
+                else:
+                    filename = rest[1:]
+                    json_part = ""
+            else:
+                json_idx = rest.find('{')
+                if json_idx > 0:
+                    filename = rest[:json_idx].strip()
+                    json_part = rest[json_idx:]
+                else:
+                    sp = rest.split(None, 1)
+                    filename = sp[0] if sp else ""
+                    json_part = sp[1] if len(sp) > 1 else ""
+            words = [command, filename, json_part] if json_part else [command, filename]
+        else:
+            words = shlex.split(line)
         if not words:
             continue
         result = handle_pv_command(words, variables, f_out)
