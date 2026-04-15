@@ -348,6 +348,25 @@ def handle_pv_command(words, variables, f_out):
     command = words[0]
     if command == "QUIT":
         return "BYE"
+    if command == "GETCWD":
+        f_out.write(f"cwd:{os.getcwd()}\n")
+        f_out.flush()
+        return "FINISHED"
+    if command == "SETCWD":
+        if len(words) < 2:
+            f_out.write("error:SETCWD requires a path argument\n")
+            f_out.flush()
+            return "FAILED"
+        new_path = " ".join(words[1:])
+        try:
+            os.chdir(new_path)
+            f_out.write(f"cwd:{os.getcwd()}\n")
+            f_out.flush()
+            return "FINISHED"
+        except Exception as e:
+            f_out.write(f"error:{e}\n")
+            f_out.flush()
+            return "FAILED"
     if command == "IMPORTDEVICE":
         if len(words) >= 2:
             file = words[1]
@@ -1230,6 +1249,14 @@ def handle_block(lines, variables, f_out):
             if not _safe_write(line_before_colon + ":: executed\n"):
                 return "BYE"
             continue
+        # For SETCWD, parse manually so Windows backslashes survive (shlex eats them)
+        if line.startswith("SETCWD "):
+            path_arg = line[len("SETCWD "):].strip().strip('"')
+            words = ["SETCWD", path_arg]
+            result = handle_pv_command(words, variables, f_out)
+            if result == "BYE":
+                return "BYE"
+            continue
         # For EXPORTDEVICE/IMPORTDEVICE, parse manually to preserve JSON quotes
         if line.startswith("EXPORTDEVICE") or line.startswith("IMPORTDEVICE"):
             parts = line.split(None, 1)
@@ -1262,6 +1289,34 @@ def handle_block(lines, variables, f_out):
             return "BYE"
     return "FINISHED"
 
+def _serve_connection(conn, addr, variables):
+    """Handle a single client connection until it closes or sends QUIT."""
+    try:
+        with conn:
+            print("ACCEPTED:", addr)
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            f_out = conn.makefile("w", encoding="utf-8", newline="\n")
+            while not SHOULD_EXIT:
+                block = read_block_sock(conn)
+                if block is None:
+                    print(f"Connection {addr} closed.")
+                    return
+                result = handle_block(block, variables, f_out)
+                if result == "BYE":
+                    try:
+                        f_out.write("FINISHED\n"); f_out.flush()
+                    except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+                        pass
+                    return
+                try:
+                    f_out.write(result + "\n"); f_out.flush()
+                except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+                    print(f"Connection {addr} closed.")
+                    return
+    except Exception as e:
+        print(f"Connection {addr} error: {e}")
+
+
 def main():
     host, port = "127.0.0.1", 5007
     if len(sys.argv) >= 2:
@@ -1276,6 +1331,7 @@ def main():
 
     print(f"Starting server on {host}:{port}")
 
+    import threading
     variables = {}
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1289,31 +1345,12 @@ def main():
                     conn, addr = s.accept()
                 except socket.timeout:
                     continue
-
-                with conn:
-                    print("ACCEPTED:", addr)
-                    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    f_out = conn.makefile("w", encoding="utf-8", newline="\n")
-
-                    while not SHOULD_EXIT:
-                        block = read_block_sock(conn)
-                        if block is None:
-                            print("Connection closed. Waiting for next connection...")
-                            break
-                        result = handle_block(block, variables, f_out)
-                        if result == "BYE":
-                            try:
-                                f_out.write("FINISHED\n")
-                                f_out.flush()
-                            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
-                                pass
-                            return
-                        try:
-                            f_out.write(result + "\n")
-                            f_out.flush()
-                        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
-                            print("Connection closed. Waiting for next connection...")
-                            break
+                t = threading.Thread(
+                    target=_serve_connection,
+                    args=(conn, addr, variables),
+                    daemon=True,
+                )
+                t.start()
         except KeyboardInterrupt:
             pass
 
