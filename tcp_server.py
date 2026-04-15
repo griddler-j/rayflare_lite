@@ -317,6 +317,57 @@ def export_device(info, bson_file):
         _replace_cells_in_tree(device, new_cells)
         device.cells = device.findElementType(Cell)  # refresh the list
         device.set_interconnect_resistors(info["interconnect_conds"])
+
+        # Match module Voc by scaling all cells' J01/J02 by a common alpha.
+        # Preserves per-cell ratios set by Module's FEM export.
+        target_Voc = info.get("target_Voc", None)
+        if target_Voc is not None and target_Voc > 0:
+            J01_bases = [c.J01() for c in device.cells]
+            J02_bases = [c.J02() for c in device.cells]
+            device.set_Suns(1)
+            alpha = 1.0
+            lower = 0.0
+            upper = None
+            for _ in range(100):
+                for c, j01b, j02b in zip(device.cells, J01_bases, J02_bases):
+                    c.set_J01(j01b * alpha)
+                    c.set_J02(j02b * alpha)
+                device.null_all_IV()
+                Voc = get_Voc(device)
+                if abs(Voc - target_Voc) < 1e-4:
+                    break
+                if Voc > target_Voc:
+                    lower = alpha
+                    if upper is None:
+                        alpha *= 2
+                    else:
+                        alpha = 0.5 * (lower + upper)
+                else:
+                    upper = alpha
+                    alpha = 0.5 * (lower + upper)
+
+        # Match module Pmax by scaling all cells' specific_Rs by a common beta.
+        # Runs AFTER Voc fit so Rs adjustment doesn't disturb matched Voc much.
+        target_Pmax = info.get("target_Pmax", None)
+        if target_Pmax is not None and target_Pmax > 0:
+            Rs_bases = [c.specific_Rs() for c in device.cells]
+            device.set_Suns(1)
+            beta = 1.0
+            lower = 0.0
+            upper = None
+            for _ in range(100):
+                for c, rsb in zip(device.cells, Rs_bases):
+                    c.set_specific_Rs(rsb * beta)
+                device.null_all_IV()
+                Pmax = get_Pmax(device)
+                if abs(Pmax - target_Pmax) / max(abs(target_Pmax), 1e-12) < 1e-4:
+                    break
+                if Pmax > target_Pmax:
+                    lower = beta
+                    beta = beta * 2 if upper is None else 0.5 * (lower + upper)
+                else:
+                    upper = beta
+                    beta = 0.5 * (lower + upper)
     elif type_ == "MultiJunctionCell":
         cells = []
         for cell_info in info["cells"]:
