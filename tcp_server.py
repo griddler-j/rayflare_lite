@@ -235,7 +235,7 @@ def adjust_Rs(device,target_Eff):
     for _ in range(100):
         device.set_specific_Rs(Rs_)
         Eff = device.get_Pmax()/device.area
-        if abs(Eff-target_Eff)<1e-4:
+        if abs(Eff-target_Eff)<1e-6:
             break
         if target_Eff > Eff:
             upper_ = Rs_
@@ -246,6 +246,31 @@ def adjust_Rs(device,target_Eff):
                 Rs_ *= 2
             else:
                 Rs_ = 0.5*(upper_+lower_)
+
+def adjust_J0_to_Voc(device, target_Voc, J01_base, J02_base):
+    """Scale J01 and J02 by a common factor alpha until lumped Voc matches
+    target_Voc (V) to 0.01 mV (1e-5 V). Higher alpha -> more recombination
+    -> lower Voc."""
+    device.set_Suns(1)
+    alpha = 1.0
+    lower_ = 0.0
+    upper_ = None
+    for _ in range(100):
+        device.set_J01(J01_base * alpha)
+        device.set_J02(J02_base * alpha)
+        Voc = get_Voc(device)
+        if abs(Voc - target_Voc) < 1e-5:
+            break
+        if Voc > target_Voc:
+            lower_ = alpha
+            if upper_ is None:
+                alpha *= 2
+            else:
+                alpha = 0.5 * (lower_ + upper_)
+        else:
+            upper_ = alpha
+            alpha = 0.5 * (lower_ + upper_)
+    return alpha
         
 # need module topology info
 def export_device(info, bson_file):
@@ -253,7 +278,12 @@ def export_device(info, bson_file):
     if type_ == "Cell":
         info["cell"][4]  = 1
         target_Eff = info["cell"][9]
+        target_Voc = info["cell"][10] if len(info["cell"]) > 10 else None
+        J01_base = info["cell"][1]
+        J02_base = info["cell"][2]
         device = make_cell_from_parameters(info["cell"])
+        if target_Voc is not None and target_Voc > 0:
+            adjust_J0_to_Voc(device, target_Voc, J01_base, J02_base)
         adjust_Rs(device,target_Eff)
     elif type_ == "Module":
         # Estimate module Isc/Voc from cell parameters for correct topology

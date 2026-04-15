@@ -1,0 +1,45 @@
+2026-04-14  tcp_server.py — match FEM Voc by scaling J01/J02 before fitting Rs
+=============================================================================
+
+Context
+-------
+Round-trip Griddler PRO -> EXPORTTOPVCIRCUITMODEL -> PV_CM had FF off by
+~0.53 % rel. on Topcon_cell.mat.  The lumped-area-weighted J01/J02 produced
+a Voc 2.6 mV above FEM Voc, and the existing adjust_Rs over-fit Rs to land
+Pmax, leaving FF too low.
+
+Changes
+-------
+1. New function adjust_J0_to_Voc(device, target_Voc, J01_base, J02_base):
+   bisects a common alpha multiplier on J01 and J02 until lumped Voc matches
+   target_Voc to 1e-5 V (0.01 mV).  Higher alpha -> more recombination ->
+   lower Voc.
+
+2. export_device Cell branch:
+   - reads target_Voc from cell_info[10] (newly shipped by PRO/IBC MATLAB)
+   - runs adjust_J0_to_Voc first (skipped if target_Voc absent or 0, so
+     tandem subcells which set 0 are unaffected)
+   - then runs the existing adjust_Rs to match target_Eff
+
+3. adjust_Rs tolerance tightened from 1e-4 to 1e-6 W/cm2.
+
+Companion MATLAB change
+-----------------------
+Griddler PRO a13_export_cell_parameters.m: removed MATLAB-side Rs bisection
+in single-cell branch; now ships target_Voc as cell_info[10] and Rs=0.
+
+Result
+------
+Topcon_cell.mat round-trip:
+  Voc  704.736 -> 704.745 mV  (0.0014 %)
+  Pmax 22.604  -> 22.604      (0.001 %)
+  FF   80.530  -> 80.530      (0.0004 %)
+FF gap shrank ~1300x.
+
+Status
+------
+- PRO cell export: validated on Topcon_cell.mat.
+- IBC and Module exports: NOT yet updated.  IBC's a13 equivalent and
+  Module's export path still use the old MATLAB Rs bisection and don't
+  ship target_Voc; they'll keep working but won't get the FF improvement
+  until they are also updated.
